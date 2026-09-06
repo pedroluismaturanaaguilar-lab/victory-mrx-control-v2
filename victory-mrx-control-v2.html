@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Victory MRX 150 — Centro de control</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; height:100%; }
+  html[data-theme="dark"] {
+    --bg:#14171A; --surface:#1E2226; --surface2:#262B30;
+    --text:#ECE9E4; --text-dim:#9BA3A8; --border:rgba(255,255,255,0.09);
+    --accent:#E8A33D; --accent-ink:#3A2607; --good:#3FA34D; --warn:#E8A33D; --bad:#E0554A;
+    --track: rgba(255,255,255,0.06);
+  }
+  html[data-theme="light"] {
+    --bg:#F4F1EA; --surface:#FFFFFF; --surface2:#EFEAE0;
+    --text:#211D18; --text-dim:#6E675D; --border:rgba(0,0,0,0.09);
+    --accent:#C4791F; --accent-ink:#FFF6E8; --good:#2E8B42; --warn:#C4791F; --bad:#C43A30;
+    --track: rgba(0,0,0,0.06);
+  }
+  body { background:var(--bg); color:var(--text); font-family:'Inter', system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3,.head { font-family:'Barlow Condensed', sans-serif; letter-spacing:0.01em; margin:0; }
+  .mono { font-family:'IBM Plex Mono', monospace; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; }
+  .btn {
+    display:inline-flex; align-items:center; gap:8px; justify-content:center;
+    border-radius:8px; padding:10px 16px; font-weight:600; cursor:pointer;
+    border:1px solid var(--border); background:var(--surface2); color:var(--text);
+    font-size:14px; font-family:inherit; text-decoration:none;
+  }
+  .btn:active { transform:scale(0.98); }
+  .btn-accent { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .btn-sm { padding:6px 10px; font-size:13px; }
+  input, select, textarea {
+    width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text);
+    border-radius:7px; padding:9px 10px; font-size:14px; font-family:inherit;
+  }
+  label.f-label { font-size:12px; color:var(--text-dim); margin-bottom:4px; display:block; }
+  .tag { font-size:11px; padding:2px 8px; border-radius:99px; font-weight:600; display:inline-block; }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; }
+  .grid-stat { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .grid-quick { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
+  .grid-cuotas { display:grid; grid-template-columns:repeat(auto-fill,minmax(52px,1fr)); gap:8px; }
+  .row-between { display:flex; justify-content:space-between; align-items:center; }
+  .stack { display:flex; flex-direction:column; gap:16px; }
+  .scroll::-webkit-scrollbar { width:6px; height:6px; }
+  .scroll::-webkit-scrollbar-thumb { background:var(--border); border-radius:99px; }
+  #app { min-height:100vh; }
+  .layout { display:flex; min-height:100vh; }
+  .sidebar { width:220px; flex-shrink:0; border-right:1px solid var(--border); padding:18px; overflow-y:auto; }
+  .navbtn { display:flex; align-items:center; gap:10px; width:100%; text-align:left; justify-content:flex-start;
+    background:transparent; border:none; color:var(--text); padding:9px 12px; border-radius:8px; cursor:pointer; font-size:13.5px; font-family:inherit; font-weight:600; }
+  .navbtn.active { background:var(--accent); color:var(--accent-ink); }
+  .content { flex:1; min-width:0; }
+  .content-inner { padding:20px; max-width:1000px; margin:0 auto; }
+  .topbar-mobile { display:none; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border); }
+  @media (max-width:860px) {
+    .sidebar { display:none; }
+    .sidebar.open { display:block; position:fixed; z-index:20; background:var(--bg); height:100vh; top:0; left:0; }
+    .topbar-mobile { display:flex; }
+  }
+  .cuota-btn { aspect-ratio:1; border-radius:8px; font-weight:600; font-size:13px; cursor:pointer; }
+  .thumb { width:64px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:pointer; }
+  .lightbox { position:fixed; inset:0; background:rgba(0,0,0,0.85); display:flex; align-items:center; justify-content:center; z-index:50; padding:20px; }
+  .lightbox img { max-width:100%; max-height:100%; border-radius:8px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ================================================================ */
+/* Datos por defecto y persistencia (localStorage)                   */
+/* ================================================================ */
+var STORAGE_KEY = "victory-mrx-data-v2";
+
+function seedCuotas(n, valor) {
+  var out = [];
+  for (var i = 1; i <= n; i++) {
+    out.push({
+      numero: i, fecha: "", valor: valor, capital: 0, interes: 0, capitalFinal: 0,
+      estado: "pendiente", fechaPagoReal: "", valorPagado: 0, comprobante: "",
+      observaciones: "", provisional: true, historial: []
+    });
+  }
+  return out;
+}
+
+var COMPONENTES_DEFAULT = [
+  "Filtro de aire","Bujía","Cadena","Lubricación de cadena","Tensión de cadena","Frenos",
+  "Pastillas de freno","Líquido de frenos","Batería","Llantas","Suspensión","Dirección",
+  "Guayas","Sistema eléctrico","Luces","Revisión de válvulas","Carburador / sistema de alimentación",
+  "Fugas","Tornillería","Rodamientos","Kit de arrastre","Sprockets"
+];
+
+function defaultData() {
+  return {
+    auth: { username: "admin", password: "admin123" },
+    theme: "dark",
+    moto: {
+      marca: "Victory", linea: "MRX150 CBS TK", cilindraje: "149 cc / 149,20 cc según documentación",
+      modelo: "2027", color: "NEGRO NEBULOSA", clase: "MOTOCICLETA", servicio: "PARTICULAR",
+      combustible: "GASOLINA", capacidadPersonas: 2, carroceria: "SIN CARROCERÍA", potencia: "10 HP",
+      placa: "MEW17I", vin: "9FLJCKLH7VKE12373", motor: "ZS157FMJ25T105287", chasis: "9FLJCKLH7VKE12373",
+      propietario: "PEDRO LUIS MATURANA AGUI", cedula: "1005020505",
+      numeroLicenciaTransito: "10040033011", declaracionImportacion: "902026000098277",
+      fechaImportacion: "2026-05-27", fechaMatricula: "2026-08-31", fechaExpedicionLicencia: "2026-08-31",
+      organismoTransito: "STRIA MCPAL TTTO Y TTE DOSQUEBRADAS", limitacionPropiedad: "PRENDA - MOTO EXPERIENCIA S.A.S.",
+      fechaCompra: "", fechaEntrega: "", kmActual: 0, valorCompra: "", concesionario: "Auteco / Moto Experiencia"
+    },
+    financiacion: {
+      entidad: "MOTO EXPERIENCIA S.A.S.", capital: 0, numCuotas: 49, valorCuotaProvisional: 448000,
+      fechaPrimera: "", fechaUltima: "", tasa: "", otrosCobros: "", saldoAFavor: 0,
+      cuotaInicial: { valor: 1700000, fecha: "" }
+    },
+    cuotas: seedCuotas(49, 448000),
+    pagos: [],
+    tarjetaPropiedad: { foto: "" },
+    garantiaFabrica: { meses: 12, km: 20000, fechaInicio: "" },
+    garantiaSuplementaria: {
+      numero: "114360", aseguradora: "Garantimotos S.A.S.", titular: "PEDRO LUIS MATURANA AGUI",
+      vehiculo: "MEW17I", duracionMeses: 12, vigenciaInicio: "2026-09-03", vigenciaFin: "2027-09-02",
+      coberturaPerdidaTotalDanos: "90%", coberturaPerdidaTotalHurto: "90%", valorPagado: 653800, foto: "",
+      firmaDigital: { fecha: "2026-09-03", codigoVerificacion: "", foto: "" }
+    },
+    soat: {
+      aseguradora: "La Previsora Seguros", fechaExpedicion: "2026-08-27",
+      vigenciaInicio: "2026-08-28", vigenciaFin: "2027-08-27", valorPagado: 343300, foto: ""
+    },
+    tecnomecanica: { fechaPrueba: "2026-05-27", fechaVencimiento: "", foto: "", clase: "MOTOCICLETA" },
+    mantenimiento: {
+      kmActualHistorial: [],
+      aceite: { intervaloKm: 5000, especificacion: "20W50, JASO MA / API SL", historial: [] },
+      revisiones: { puntos: [500,5000,10000,15000,20000], intervaloContinuo: 5000, historial: [] },
+      componentes: COMPONENTES_DEFAULT.map(function(nombre){
+        return { id: uidStatic(), nombre: nombre, intervaloKm: 0, tipo: "estimado", ultimoKm: 0, ultimaFecha: "" };
+      })
+    },
+    tanqueos: [],
+    compras: { lista: [], inventario: [], realizadas: [] },
+    galeria: [],
+    cuentas: [
+      { banco: "Davivienda", tipo: "Cuenta corriente", numero: "136669994511", titular: "MOTO EXPERIENCIA S.A.S." },
+      { banco: "Bancolombia", tipo: "Cuenta corriente", numero: "75632459307", titular: "MOTO EXPERIENCIA S.A.S." }
+    ],
+    contactos: [{ nombre: "Vanessa", rol: "Cajera", telefono: "3168775259" }],
+    linkPago: "https://micrositios.avalpaycenter.com/moto-experiencia-ma",
+    documentos: [
+      { nombre: "Contrato de financiación", tipo: "Financiación", notas: "" },
+      { nombre: "Tabla de amortización", tipo: "Financiación", notas: "Pendiente foto/PDF legible" },
+      { nombre: "Tarjeta de propiedad", tipo: "Legal", notas: "" },
+      { nombre: "SOAT", tipo: "SOAT", notas: "" },
+      { nombre: "Certificado de emisiones", tipo: "Emisiones", notas: "" },
+      { nombre: "Garantía de fábrica", tipo: "Garantía", notas: "" },
+      { nombre: "Garantía suplementaria (contrato completo)", tipo: "Garantía", notas: "" },
+      { nombre: "Manual de garantía y mantenimiento (Auteco)", tipo: "Mantenimiento", notas: "" }
+    ]
+  };
+}
+var _uidCounter = 0;
+function uidStatic() { _uidCounter++; return "c" + _uidCounter + Math.random().toString(36).slice(2,6); }
+
+function loadData() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return defaultData();
+}
+function saveData() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(App.state)); }
+  catch (e) { alert("No se pudo guardar (posiblemente el almacenamiento del navegador está lleno, sobre todo por fotos). Descarga una copia de seguridad y considera eliminar alguna foto grande."); }
+}
+
+/* ================================================================ */
+/* Utilidades                                                        */
+/* ================================================================ */
+function fmtCOP(n) { return "$" + Math.round(Number(n) || 0).toLocaleString("es-CO"); }
+function daysUntil(iso) {
+  if (!iso) return null;
+  var today = new Date(); today.setHours(0,0,0,0);
+  var target = new Date(iso + "T00:00:00");
+  return Math.round((target - today) / 86400000);
+}
+function fmtDate(iso) {
+  if (!iso) return "—";
+  var d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("es-CO", { day:"2-digit", month:"2-digit", year:"numeric" });
+}
+function uid() { return Math.random().toString(36).slice(2,10); }
+function esc(v) { return (v === undefined || v === null) ? "" : String(v).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
+function toneVar(t) { return t === "good" ? "var(--good)" : t === "bad" ? "var(--bad)" : "var(--warn)"; }
+function pill(tone, text) {
+  var c = toneVar(tone);
+  return '<span class="tag" style="background:'+c+'22;color:'+c+';border:1px solid '+c+'55">'+esc(text)+'</span>';
+}
+function getPath(obj, path) {
+  return path.split(".").reduce(function(o,k){ return (o===undefined||o===null) ? undefined : o[k]; }, obj);
+}
+function setPath(obj, path, value) {
+  var parts = path.split(".");
+  var cur = obj;
+  for (var i = 0; i < parts.length - 1; i++) cur = cur[parts[i]];
+  cur[parts[parts.length - 1]] = value;
+}
+function readFileAsDataURL(file, cb) {
+  var r = new FileReader();
+  r.onload = function() { cb(r.result); };
+  r.readAsDataURL(file);
+}
+
+/* ================================================================ */
+/* Cálculos                                                           */
+/* ================================================================ */
+function computeTotals(d) {
+  var totalCuotasValor = d.cuotas.reduce(function(s,c){ return s + (Number(c.valor)||0); }, 0);
+  var totalFinanciado = d.financiacion.capital > 0 ? Number(d.financiacion.capital) : totalCuotasValor;
+  var totalPagadoCuotas = d.pagos.reduce(function(s,p){ return s + (Number(p.valor)||0); }, 0);
+  var cuotaInicial = Number(d.financiacion.cuotaInicial && d.financiacion.cuotaInicial.valor || 0);
+  var totalPagado = totalPagadoCuotas + cuotaInicial;
+  var saldoPendiente = Math.max(0, totalFinanciado - totalPagadoCuotas);
+  var cuotasPagadas = d.cuotas.filter(function(c){ return c.estado === "pagada"; }).length;
+  var cuotasParciales = d.cuotas.filter(function(c){ return c.estado === "parcial"; }).length;
+  var cuotasPendientes = d.cuotas.length - cuotasPagadas - cuotasParciales;
+  var pct = totalFinanciado > 0 ? (totalPagadoCuotas / totalFinanciado) * 100 : 0;
+  var proxima = d.cuotas.find(function(c){ return c.estado !== "pagada" && c.fecha; }) ||
+                d.cuotas.find(function(c){ return c.estado !== "pagada"; });
+  return { totalFinanciado:totalFinanciado, totalPagado:totalPagado, cuotaInicial:cuotaInicial,
+    saldoPendiente:saldoPendiente, cuotasPagadas:cuotasPagadas, cuotasParciales:cuotasParciales,
+    cuotasPendientes:cuotasPendientes, pct:pct, proxima:proxima };
+}
+
+function nextAceiteKm(d) {
+  var m = d.mantenimiento.aceite;
+  var hist = m.historial;
+  var last = 0;
+  hist.forEach(function(h){ if (Number(h.kilometraje) > last) last = Number(h.kilometraje); });
+  var intervalo = Number(m.intervaloKm) || 5000;
+  var next = last + intervalo;
+  while (next <= d.moto.kmActual) next += intervalo;
+  return next;
+}
+function nextRevisionKm(d) {
+  var m = d.mantenimiento.revisiones;
+  var km = d.moto.kmActual;
+  var fixed = m.puntos.slice().sort(function(a,b){ return a-b; });
+  for (var i = 0; i < fixed.length; i++) if (fixed[i] > km) return fixed[i];
+  var last = fixed[fixed.length - 1] || 0;
+  var intervalo = Number(m.intervaloContinuo) || 5000;
+  var next = last + intervalo;
+  while (next <= km) next += intervalo;
+  return next;
+}
+function nextGenericKm(intervalo, ultimoKm, kmActual) {
+  if (!intervalo || intervalo <= 0) return null;
+  var next = Number(ultimoKm || 0) + Number(intervalo);
+  while (next <= kmActual) next += Number(intervalo);
+  return next;
+}
+
+function buildAlerts(d, totals) {
+  var alerts = [];
+  var p = totals.proxima;
+  if (p && p.fecha) {
+    var dd = daysUntil(p.fecha);
+    if (dd < 0) alerts.push({tone:"bad", text:"Cuota #"+p.numero+" vencida hace "+Math.abs(dd)+" día(s)."});
+    else if (dd === 0) alerts.push({tone:"bad", text:"Cuota #"+p.numero+" vence hoy."});
+    else if (dd <= 7) alerts.push({tone:"warn", text:"Cuota #"+p.numero+" vence en "+dd+" día(s)."});
+  }
+  var km = d.moto.kmActual;
+  var proxAceite = nextAceiteKm(d);
+  if (proxAceite - km <= 300) alerts.push({tone:"warn", text:"Cambio de aceite en "+(proxAceite-km)+" km (a los "+proxAceite.toLocaleString("es-CO")+" km)."});
+  var proxRev = nextRevisionKm(d);
+  if (proxRev - km <= 300) alerts.push({tone:"warn", text:"Mantenimiento/revisión en "+(proxRev-km)+" km (a los "+proxRev.toLocaleString("es-CO")+" km)."});
+  if (d.soat.vigenciaFin) {
+    var dsoat = daysUntil(d.soat.vigenciaFin);
+    if (dsoat < 0) alerts.push({tone:"bad", text:"El SOAT está vencido."});
+    else if (dsoat <= 30) alerts.push({tone:"warn", text:"El SOAT vence en "+dsoat+" día(s)."});
+  }
+  if (d.garantiaSuplementaria.vigenciaFin) {
+    var dgar = daysUntil(d.garantiaSuplementaria.vigenciaFin);
+    if (dgar >= 0 && dgar <= 30) alerts.push({tone:"warn", text:"La garantía suplementaria vence en "+dgar+" día(s)."});
+  }
+  var pendCompras = d.compras.lista.filter(function(i){ return i.estado === "pendiente"; }).length;
+  if (pendCompras > 0) alerts.push({tone:"warn", text: pendCompras + " producto(s) pendientes por comprar."});
+  return alerts;
+}
+
+/* ================================================================ */
+/* App                                                                */
+/* ================================================================ */
+var NAV = [
+  { id:"inicio", label:"Inicio", icon:"🏠" },
+  { id:"financiacion", label:"Financiación", icon:"💰" },
+  { id:"cuotas", label:"Cuotas", icon:"📋" },
+  { id:"mantenimiento", label:"Mantenimiento", icon:"🔧" },
+  { id:"combustible", label:"Tanqueos", icon:"⛽" },
+  { id:"compras", label:"Compras e inventario", icon:"🛒" },
+  { id:"legal", label:"Legal y docs", icon:"📂" },
+  { id:"galeria", label:"Galería", icon:"🖼️" },
+  { id:"pagos", label:"Cuentas y pago", icon:"🏦" },
+  { id:"config", label:"Configuración", icon:"⚙️" }
+];
+
+var App = {
+  state: null,
+  ui: { loggedIn:false, tab:"inicio", navOpen:false, selCuota:null, showCuotaHist:false, showPagoForm:false,
+        filterTipo:"", pagoForm:null, openMaint:{}, maintForm:{ aceite:{}, revisiones:{} },
+        tanqueoForm:null, comprasForm:null, inventarioForm:null, galeriaForm:null, lightbox:null },
+
+  init: function() { this.state = loadData(); this.render(); },
+  save: function() { saveData(); },
+
+  /* ---------- auth ---------- */
+  login: function(ev) {
+    ev.preventDefault();
+    var u = document.getElementById("login-user").value;
+    var p = document.getElementById("login-pass").value;
+    if (u === this.state.auth.username && p === this.state.auth.password) { this.ui.loggedIn = true; this.render(); }
+    else document.getElementById("login-err").textContent = "Usuario o contraseña incorrectos.";
+    return false;
+  },
+  logout: function() { this.ui.loggedIn = false; this.render(); },
+
+  /* ---------- nav / tema ---------- */
+  setTab: function(id) { this.ui.tab = id; this.ui.navOpen = false; this.render(); },
+  toggleNav: function() { this.ui.navOpen = !this.ui.navOpen; this.render(); },
+  toggleTheme: function() { this.state.theme = this.state.theme === "dark" ? "light" : "dark"; this.save(); this.render(); },
+
+  /* ---------- genérico ---------- */
+  updateField: function(path, value, isNumber) {
+    setPath(this.state, path, isNumber ? Number(value) : value);
+    this.save(); this.render();
+  },
+  uploadPhoto: function(path, inputEl) {
+    var file = inputEl.files[0];
+    if (!file) return;
+    readFileAsDataURL(file, function(dataUrl) { App.updateField(path, dataUrl); });
+  },
+  viewDoc: function(dataUrl) { if (!dataUrl) { alert("Todavía no has subido este documento."); return; } this.ui.lightbox = dataUrl; this.render(); },
+  closeLightbox: function() { this.ui.lightbox = null; this.render(); },
+  downloadDoc: function(dataUrl, filename) {
+    if (!dataUrl) { alert("Todavía no has subido este documento."); return; }
+    var a = document.createElement("a"); a.href = dataUrl; a.download = filename || "documento"; a.click();
+  },
+  copyText: function(text) {
+    if (navigator.clipboard) navigator.clipboard.writeText(text).catch(function(){});
+    var el = event && event.target ? event.target.closest("button") : null;
+    if (el) { var orig = el.innerHTML; el.innerHTML = "✔ Copiado"; setTimeout(function(){ el.innerHTML = orig; }, 1200); }
+  },
+
+  /* ---------- financiación / pagos ---------- */
+  updateNumCuotas: function(value) {
+    var n = Math.max(1, Number(value) || 1);
+    var d = this.state;
+    d.financiacion.numCuotas = n;
+    if (n > d.cuotas.length) {
+      for (var i = d.cuotas.length + 1; i <= n; i++) {
+        d.cuotas.push({ numero:i, fecha:"", valor:d.financiacion.valorCuotaProvisional, capital:0, interes:0,
+          capitalFinal:0, estado:"pendiente", fechaPagoReal:"", valorPagado:0, comprobante:"", observaciones:"", provisional:true, historial:[] });
+      }
+    } else if (n < d.cuotas.length) { d.cuotas = d.cuotas.slice(0, n); }
+    this.save(); this.render();
+  },
+  openPagoForm: function() {
+    this.ui.pagoForm = { fecha:new Date().toISOString().slice(0,10), hora:new Date().toTimeString().slice(0,5),
+      valor:"", tipo:"Cuota completa", cuota:"", medio:"", cuenta:"", observaciones:"", comprobante:"", comprobanteFoto:"" };
+    this.render();
+  },
+  cancelPagoForm: function() { this.ui.pagoForm = null; this.render(); },
+  updatePagoField: function(field, value) { if (this.ui.pagoForm) this.ui.pagoForm[field] = value; },
+  uploadPagoFoto: function(inputEl) {
+    var file = inputEl.files[0]; if (!file || !this.ui.pagoForm) return;
+    readFileAsDataURL(file, function(dataUrl) { App.ui.pagoForm.comprobanteFoto = dataUrl; App.render(); });
+  },
+  savePago: function() {
+    var f = this.ui.pagoForm;
+    if (!f || !f.valor) return;
+    var d = this.state;
+    var saldoAntes = computeTotals(d).saldoPendiente;
+    var pago = { id:uid(), fecha:f.fecha, hora:f.hora, valor:Number(f.valor), tipo:f.tipo,
+      cuota:f.cuota, medio:f.medio, cuenta:f.cuenta, observaciones:f.observaciones,
+      comprobante:f.comprobante, comprobanteFoto:f.comprobanteFoto || "" };
+    d.pagos.unshift(pago);
+    if (pago.tipo === "Cuota completa" && pago.cuota) {
+      var c = d.cuotas.find(function(x){ return x.numero === Number(pago.cuota); });
+      if (c) { c.estado = "pagada"; c.valorPagado = pago.valor; c.fechaPagoReal = pago.fecha; c.comprobante = pago.comprobante; }
+    } else if (pago.tipo === "Abono" || pago.tipo === "Pago anticipado") {
+      var monto = Number(pago.valor);
+      var startAt = pago.cuota ? Number(pago.cuota) : null;
+      var ordered = d.cuotas.slice().sort(function(a,b){ return a.numero - b.numero; });
+      for (var i = 0; i < ordered.length; i++) {
+        var c2 = ordered[i];
+        if (monto <= 0) break;
+        if (c2.estado === "pagada") continue;
+        if (startAt && c2.numero < startAt) continue;
+        var need = Number(c2.valor) - Number(c2.valorPagado || 0);
+        if (need <= 0) continue;
+        if (monto >= need) { c2.valorPagado = c2.valor; c2.estado = "pagada"; c2.fechaPagoReal = pago.fecha; monto -= need; }
+        else { c2.valorPagado = Number(c2.valorPagado || 0) + monto; c2.estado = "parcial"; monto = 0; }
+      }
+      d.financiacion.saldoAFavor = Number(d.financiacion.saldoAFavor || 0) + monto;
+    }
+    pago.saldoDespues = Math.max(0, saldoAntes - pago.valor);
+    this.ui.pagoForm = null;
+    this.save(); this.render();
+  },
+  setFilterTipo: function(v) { this.ui.filterTipo = v; this.render(); },
+
+  /* ---------- cuotas ---------- */
+  selectCuota: function(n) { this.ui.selCuota = n; this.ui.showCuotaHist = false; this.render(); },
+  closeCuota: function() { this.ui.selCuota = null; this.render(); },
+  toggleCuotaHist: function() { this.ui.showCuotaHist = !this.ui.showCuotaHist; this.render(); },
+  saveCuotaField: function(numero, field, value, isNumber) {
+    var c = this.state.cuotas.find(function(x){ return x.numero === numero; });
+    if (!c) return;
+    var newVal = isNumber ? Number(value) : value;
+    if (c[field] !== newVal) {
+      c.historial = c.historial || [];
+      c.historial.unshift({ fecha:new Date().toISOString().slice(0,16).replace("T"," "), campo:field, valorAnterior:c[field], valorNuevo:newVal });
+    }
+    c[field] = newVal;
+    c.provisional = false;
+    this.save(); this.render();
+  },
+
+  /* ---------- mantenimiento ---------- */
+  setKmActual: function(v) {
+    var km = Number(v) || 0;
+    this.state.moto.kmActual = km;
+    this.state.mantenimiento.kmActualHistorial.unshift({ id:uid(), fecha:new Date().toISOString().slice(0,10), hora:new Date().toTimeString().slice(0,5), km:km });
+    this.save(); this.render();
+  },
+  toggleMaint: function(campo) { this.ui.openMaint[campo] = !this.ui.openMaint[campo]; this.render(); },
+  updateMaintForm: function(campo, field, value) {
+    if (!this.ui.maintForm[campo]) this.ui.maintForm[campo] = {};
+    this.ui.maintForm[campo][field] = value;
+  },
+  uploadMaintFoto: function(campo, inputEl) {
+    var file = inputEl.files[0]; if (!file) return;
+    if (!this.ui.maintForm[campo]) this.ui.maintForm[campo] = {};
+    readFileAsDataURL(file, function(dataUrl){ App.ui.maintForm[campo].foto = dataUrl; });
+  },
+  addMaintEntry: function(campo) {
+    var form = this.ui.maintForm[campo] || {};
+    this.state.mantenimiento[campo].historial.unshift(Object.assign({ id:uid() }, form));
+    this.ui.maintForm[campo] = {};
+    this.ui.openMaint[campo] = false;
+    this.save(); this.render();
+  },
+  updateMaintConfig: function(campo, field, value, isNumber) {
+    this.state.mantenimiento[campo][field] = isNumber ? Number(value) : value;
+    this.save(); this.render();
+  },
+  updateRevisionPuntos: function(value) {
+    this.state.mantenimiento.revisiones.puntos = value.split(",").map(function(n){ return Number(n.trim()); }).filter(function(n){ return n; });
+    this.save(); this.render();
+  },
+  updateComponente: function(id, field, value, isNumber) {
+    var c = this.state.mantenimiento.componentes.find(function(x){ return x.id === id; });
+    if (!c) return;
+    c[field] = isNumber ? Number(value) : value;
+    if (field === "intervaloKm") c.tipo = Number(value) > 0 ? c.tipo : "estimado";
+    this.save(); this.render();
+  },
+  marcarComponenteRealizado: function(id) {
+    var c = this.state.mantenimiento.componentes.find(function(x){ return x.id === id; });
+    if (!c) return;
+    c.ultimoKm = this.state.moto.kmActual;
+    c.ultimaFecha = new Date().toISOString().slice(0,10);
+    this.save(); this.render();
+  },
+
+  /* ---------- combustible ---------- */
+  openTanqueoForm: function() {
+    this.ui.tanqueoForm = { fecha:new Date().toISOString().slice(0,10), hora:new Date().toTimeString().slice(0,5),
+      km:this.state.moto.kmActual, valor:"", cantidad:"", estacion:"", precioUnidad:"", observaciones:"" };
+    this.render();
+  },
+  cancelTanqueoForm: function() { this.ui.tanqueoForm = null; this.render(); },
+  updateTanqueoField: function(field, value) { if (this.ui.tanqueoForm) this.ui.tanqueoForm[field] = value; },
+  saveTanqueo: function() {
+    var f = this.ui.tanqueoForm;
+    if (!f || !f.valor) return;
+    this.state.tanqueos.unshift({ id:uid(), fecha:f.fecha, hora:f.hora, km:Number(f.km)||0, valor:Number(f.valor),
+      cantidad:f.cantidad?Number(f.cantidad):null, estacion:f.estacion, precioUnidad:f.precioUnidad?Number(f.precioUnidad):null, observaciones:f.observaciones });
+    this.ui.tanqueoForm = null;
+    this.save(); this.render();
+  },
+
+  /* ---------- compras / inventario ---------- */
+  openComprasForm: function() { this.ui.comprasForm = { nombre:"", color:"", cantidad:1, precio:"", descripcion:"", foto:"" }; this.render(); },
+  cancelComprasForm: function() { this.ui.comprasForm = null; this.render(); },
+  updateComprasField: function(field, value) { if (this.ui.comprasForm) this.ui.comprasForm[field] = value; },
+  uploadComprasFoto: function(inputEl) {
+    var file = inputEl.files[0]; if (!file || !this.ui.comprasForm) return;
+    readFileAsDataURL(file, function(dataUrl){ App.ui.comprasForm.foto = dataUrl; });
+  },
+  saveComprasItem: function() {
+    var f = this.ui.comprasForm; if (!f || !f.nombre) return;
+    this.state.compras.lista.unshift({ id:uid(), nombre:f.nombre, color:f.color, cantidad:Number(f.cantidad)||1,
+      precio:f.precio?Number(f.precio):null, descripcion:f.descripcion, foto:f.foto, estado:"pendiente" });
+    this.ui.comprasForm = null;
+    this.save(); this.render();
+  },
+  marcarComprado: function(id) {
+    var item = this.state.compras.lista.find(function(x){ return x.id === id; });
+    if (!item) return;
+    item.estado = "comprado";
+    this.state.compras.realizadas.unshift({ id:uid(), producto:item.nombre, cantidad:item.cantidad, precio:item.precio,
+      fecha:new Date().toISOString().slice(0,10), lugar:"", estado:"Comprado", foto:item.foto });
+    this.save(); this.render();
+  },
+  openInventarioForm: function() { this.ui.inventarioForm = { nombre:"", cantidad:1 }; this.render(); },
+  cancelInventarioForm: function() { this.ui.inventarioForm = null; this.render(); },
+  updateInventarioField: function(field, value) { if (this.ui.inventarioForm) this.ui.inventarioForm[field] = value; },
+  saveInventarioItem: function() {
+    var f = this.ui.inventarioForm; if (!f || !f.nombre) return;
+    this.state.compras.inventario.unshift({ id:uid(), nombre:f.nombre, cantidadDisponible:Number(f.cantidad)||0 });
+    this.ui.inventarioForm = null;
+    this.save(); this.render();
+  },
+  descontarInventario: function(id) {
+    var item = this.state.compras.inventario.find(function(x){ return x.id === id; });
+    if (!item) return;
+    if (item.cantidadDisponible > 0) item.cantidadDisponible -= 1;
+    this.save(); this.render();
+  },
+
+  /* ---------- galería ---------- */
+  openGaleriaForm: function() { this.ui.galeriaForm = { fecha:new Date().toISOString().slice(0,10), descripcion:"", categoria:"Moto", foto:"" }; this.render(); },
+  cancelGaleriaForm: function() { this.ui.galeriaForm = null; this.render(); },
+  updateGaleriaField: function(field, value) { if (this.ui.galeriaForm) this.ui.galeriaForm[field] = value; },
+  uploadGaleriaFoto: function(inputEl) {
+    var file = inputEl.files[0]; if (!file || !this.ui.galeriaForm) return;
+    readFileAsDataURL(file, function(dataUrl){ App.ui.galeriaForm.foto = dataUrl; App.render(); });
+  },
+  saveGaleriaItem: function() {
+    var f = this.ui.galeriaForm; if (!f || !f.foto) { alert("Selecciona una foto primero."); return; }
+    this.state.galeria.unshift({ id:uid(), fecha:f.fecha, descripcion:f.descripcion, categoria:f.categoria, foto:f.foto });
+    this.ui.galeriaForm = null;
+    this.save(); this.render();
+  },
+
+  /* ---------- documentos ---------- */
+  addDocumento: function() {
+    var input = document.getElementById("new-doc-name");
+    var v = input ? input.value.trim() : "";
+    if (!v) return;
+    this.state.documentos.push({ nombre:v, tipo:"Otro", notas:"" });
+    this.save(); this.render();
+  },
+
+  /* ---------- configuración ---------- */
+  updateCredentials: function() {
+    var u = document.getElementById("cfg-user").value;
+    var p = document.getElementById("cfg-pass").value;
+    this.state.auth.username = u || this.state.auth.username;
+    this.state.auth.password = p || this.state.auth.password;
+    document.getElementById("cfg-pass").value = "";
+    var msg = document.getElementById("cfg-msg");
+    if (msg) { msg.textContent = "Credenciales actualizadas."; setTimeout(function(){ msg.textContent=""; }, 2000); }
+    this.save();
+  },
+  downloadBackup: function() {
+    var blob = new Blob([JSON.stringify(this.state, null, 2)], { type:"application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a"); a.href = url; a.download = "victory-mrx-backup.json"; a.click();
+    URL.revokeObjectURL(url);
+  },
+  restoreBackup: function(input) {
+    var file = input.files[0]; if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function() {
+      try { App.state = JSON.parse(reader.result); App.save(); App.render(); }
+      catch (e) { alert("Archivo inválido."); }
+    };
+    reader.readAsText(file);
+  },
+
+  /* ================================================================ */
+  /* Render                                                              */
+  /* ================================================================ */
+  render: function() {
+    document.documentElement.setAttribute("data-theme", this.state.theme);
+    var root = document.getElementById("app");
+    root.innerHTML = this.ui.loggedIn ? this.renderShell() : this.renderLogin();
+    if (this.ui.lightbox) {
+      var lb = document.createElement("div");
+      lb.className = "lightbox";
+      lb.onclick = function(){ App.closeLightbox(); };
+      var img = document.createElement("img");
+      img.src = this.ui.lightbox;
+      lb.appendChild(img);
+      document.body.appendChild(lb);
+    }
+  },
+
+  renderLogin: function() {
+    return '' +
+    '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;">' +
+      '<div class="card" style="width:340px;padding:28px;">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;">' +
+          '<div style="background:var(--accent);border-radius:10px;padding:8px;font-size:20px;">🏍️</div>' +
+          '<div><div class="head" style="font-size:22px;font-weight:700;line-height:1;">VICTORY MRX 150</div>' +
+          '<div style="font-size:12px;color:var(--text-dim);">Centro de control · MEW17I</div></div>' +
+        '</div>' +
+        '<form onsubmit="return App.login(event)">' +
+          '<div style="margin-bottom:12px;"><label class="f-label">Usuario</label><input id="login-user" autofocus /></div>' +
+          '<div style="margin-bottom:16px;"><label class="f-label">Contraseña</label><input id="login-pass" type="password" /></div>' +
+          '<div id="login-err" style="color:var(--bad);font-size:13px;margin-bottom:12px;"></div>' +
+          '<button class="btn btn-accent" style="width:100%;" type="submit">Ingresar</button>' +
+        '</form>' +
+        '<div style="font-size:11px;color:var(--text-dim);margin-top:16px;text-align:center;">Acceso inicial: admin / admin123 — cámbialo en Configuración.</div>' +
+      '</div>' +
+    '</div>';
+  },
+
+  renderShell: function() {
+    var navHtml = NAV.map(function(n) {
+      var active = App.ui.tab === n.id;
+      return '<button class="navbtn' + (active ? " active" : "") + '" onclick="App.setTab(\'' + n.id + '\')">' +
+        '<span>' + n.icon + '</span> ' + n.label + '</button>';
+    }).join("");
+
+    var sidebar = '<div class="sidebar' + (this.ui.navOpen ? " open" : "") + '">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:22px;">' +
+        '<div style="background:var(--accent);border-radius:8px;padding:6px;font-size:15px;">🏍️</div>' +
+        '<div><div class="head" style="font-size:17px;font-weight:700;line-height:1;">Victory MRX 150</div>' +
+        '<div style="font-size:11px;color:var(--text-dim);">' + esc(this.state.moto.placa) + '</div></div>' +
+      '</div>' +
+      '<nav style="display:flex;flex-direction:column;gap:2px;">' + navHtml + '</nav>' +
+      '<button class="btn" style="margin-top:24px;width:100%;justify-content:flex-start;" onclick="App.logout()">🚪 Salir</button>' +
+    '</div>';
+
+    var topbar = '<div class="topbar-mobile">' +
+      '<div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--accent);">🏍️</span>' +
+      '<span class="head" style="font-size:18px;font-weight:700;">MRX 150</span></div>' +
+      '<button class="btn" onclick="App.toggleNav()">☰</button>' +
+    '</div>';
+
+    var totals = computeTotals(this.state);
+    var content;
+    switch (this.ui.tab) {
+      case "inicio": content = this.renderInicio(totals); break;
+      case "financiacion": content = this.renderFinanciacion(totals); break;
+      case "cuotas": content = this.renderCuotas(); break;
+      case "mantenimiento": content = this.renderMantenimiento(); break;
+      case "combustible": content = this.renderCombustible(); break;
+      case "compras": content = this.renderCompras(); break;
+      case "legal": content = this.renderLegal(); break;
+      case "galeria": content = this.renderGaleria(); break;
+      case "pagos": content = this.renderPagos(); break;
+      case "config": content = this.renderConfig(); break;
+      default: content = "";
+    }
+
+    return '<div class="layout">' + sidebar +
+      '<div class="content">' + topbar + '<div class="content-inner">' + content + '</div></div>' +
+    '</div>';
+  },
+
+  /* ---------- Inicio ---------- */
+  renderInicio: function(totals) {
+    var d = this.state;
+    var alerts = buildAlerts(d, totals);
+    var p = totals.proxima;
+    var dRest = p && p.fecha ? daysUntil(p.fecha) : null;
+    var ultimoTanqueo = d.tanqueos[0];
+    var pendCompras = d.compras.lista.filter(function(i){ return i.estado === "pendiente"; }).length;
+
+    var alertsHtml = "";
+    if (alerts.length) {
+      alertsHtml = '<div class="card" style="padding:16px;">' +
+        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:600;">⚠️ Alertas</div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px;">' +
+        alerts.map(function(a){
+          return '<div style="display:flex;align-items:center;gap:8px;font-size:14px;">' +
+            pill(a.tone, a.tone === "bad" ? "Urgente" : "Próximo") + ' ' + esc(a.text) + '</div>';
+        }).join("") + '</div></div>';
+    }
+
+    return '<div class="stack">' +
+      '<div class="card" style="padding:22px;position:relative;overflow:hidden;">' +
+        '<div style="position:absolute;right:-10px;top:-10px;font-size:120px;opacity:0.06;">🏍️</div>' +
+        '<div style="font-size:13px;color:var(--text-dim);">Bienvenido a tu seguimiento de pagos 🏍️</div>' +
+        '<div class="head" style="font-size:30px;font-weight:700;margin-top:2px;">' + esc(d.moto.marca) + ' ' + esc(d.moto.linea) + '</div>' +
+        '<div style="color:var(--text-dim);font-size:14px;margin-bottom:14px;">Modelo ' + esc(d.moto.modelo) + ' · Placa ' + esc(d.moto.placa) + '</div>' +
+        '<div style="background:var(--track);border-radius:99px;height:10px;overflow:hidden;">' +
+          '<div style="width:' + Math.min(100, Math.max(0, totals.pct)) + '%;height:100%;background:linear-gradient(90deg, var(--accent), var(--good));"></div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:13px;color:var(--text-dim);">' +
+          '<span class="mono">' + fmtCOP(totals.totalPagado) + ' de ' + fmtCOP(totals.totalFinanciado + totals.cuotaInicial) + '</span>' +
+          '<span class="mono">' + totals.pct.toFixed(1) + '%</span>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="grid-stat">' +
+        statCard("Saldo pendiente", fmtCOP(totals.saldoPendiente)) +
+        statCard("Cuotas pagadas", totals.cuotasPagadas + " / " + d.cuotas.length) +
+        statCard("Cuotas pendientes", totals.cuotasPendientes) +
+        statCard("Próximo pago", p ? ("#" + p.numero + " · " + fmtCOP(p.valor)) : "—",
+          p && p.fecha ? (dRest < 0 ? "Vencida hace " + Math.abs(dRest) + "d" : "Faltan " + dRest + " días") : "Sin fecha registrada",
+          p && p.fecha ? (dRest < 0 ? "bad" : dRest <= 7 ? "warn" : "good") : null) +
+      '</div>' +
+
+      alertsHtml +
+
+      '<div class="grid-quick">' +
+        quickCard("💧", "Aceite", "Próximo a los " + nextAceiteKm(d).toLocaleString("es-CO") + " km", "mantenimiento") +
+        quickCard("🔧", "Revisión/mantenimiento", "Próximo a los " + nextRevisionKm(d).toLocaleString("es-CO") + " km", "mantenimiento") +
+        quickCard("⛽", "Último tanqueo", ultimoTanqueo ? (fmtDate(ultimoTanqueo.fecha) + " · " + fmtCOP(ultimoTanqueo.valor)) : "Sin registros", "combustible") +
+        quickCard("🛒", "Compras pendientes", pendCompras + " producto(s)", "compras") +
+        quickCard("🛡️", "SOAT", d.soat.vigenciaFin ? ("Vence " + fmtDate(d.soat.vigenciaFin)) : "Sin datos", "legal") +
+        quickCard("📄", "Garantías", "Fábrica y suplementaria (ver Legal)", "legal") +
+      '</div>' +
+    '</div>';
+
+    function statCard(label, value, sub, tone) {
+      return '<div class="card" style="padding:14px;">' +
+        '<div style="font-size:12px;color:var(--text-dim);">' + esc(label) + '</div>' +
+        '<div class="mono" style="font-size:19px;font-weight:600;margin-top:4px;">' + esc(value) + '</div>' +
+        (sub ? '<div style="font-size:12px;margin-top:3px;color:' + (tone ? toneVar(tone) : "var(--text-dim)") + ';">' + esc(sub) + '</div>' : '') +
+      '</div>';
+    }
+    function quickCard(icon, title, text, tab) {
+      return '<button class="card" onclick="App.setTab(\'' + tab + '\')" style="padding:14px;text-align:left;cursor:pointer;display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);color:var(--text);font-family:inherit;">' +
+        '<div style="background:var(--surface2);border-radius:8px;padding:8px;font-size:16px;">' + icon + '</div>' +
+        '<div><div style="font-weight:600;font-size:14px;">' + esc(title) + '</div>' +
+        '<div style="font-size:12px;color:var(--text-dim);margin-top:2px;">' + esc(text) + '</div></div>' +
+      '</button>';
+    }
+  },
+
+  /* ---------- Financiación ---------- */
+  renderFinanciacion: function(totals) {
+    var d = this.state; var f = d.financiacion;
+    var pagosFiltrados = this.ui.filterTipo ? d.pagos.filter(function(p){ return p.tipo === App.ui.filterTipo; }) : d.pagos;
+
+    var cuotaOptions = d.cuotas.map(function(c){
+      return '<option value="' + c.numero + '">#' + c.numero + ' · ' + fmtCOP(c.valor) + ' · ' + c.estado + '</option>';
+    }).join("");
+    var cuentaOptions = d.cuentas.map(function(c){ return '<option>' + esc(c.banco) + '</option>'; }).join("");
+
+    var pagoFormHtml = "";
+    if (this.ui.pagoForm) {
+      var pf = this.ui.pagoForm;
+      pagoFormHtml = '<div class="card" style="padding:18px;">' +
+        '<div class="row-between" style="margin-bottom:12px;"><div style="font-weight:600;">Registrar pago</div>' +
+        '<button class="btn btn-sm" onclick="App.cancelPagoForm()">✕</button></div>' +
+        '<div class="grid2">' +
+          field("Fecha", '<input type="date" value="' + esc(pf.fecha) + '" onchange="App.updatePagoField(\'fecha\', this.value)" />') +
+          field("Hora", '<input type="time" value="' + esc(pf.hora) + '" onchange="App.updatePagoField(\'hora\', this.value)" />') +
+          field("Valor pagado", '<input type="number" value="' + esc(pf.valor) + '" onchange="App.updatePagoField(\'valor\', this.value)" />') +
+          field("Tipo de pago", '<select onchange="App.updatePagoField(\'tipo\', this.value)">' +
+            ["Cuota completa","Abono","Pago anticipado","Otro"].map(function(t){ return '<option' + (t===pf.tipo?' selected':'') + '>' + t + '</option>'; }).join("") + '</select>') +
+          field("Cuota relacionada (opcional)", '<select onchange="App.updatePagoField(\'cuota\', this.value)"><option value="">—</option>' + cuotaOptions + '</select>') +
+          field("Medio de pago", '<input value="' + esc(pf.medio) + '" placeholder="Transferencia, PSE…" onchange="App.updatePagoField(\'medio\', this.value)" />') +
+          field("Cuenta utilizada", '<select onchange="App.updatePagoField(\'cuenta\', this.value)"><option value="">—</option>' + cuentaOptions + '</select>') +
+          field("Referencia de comprobante", '<input value="' + esc(pf.comprobante) + '" onchange="App.updatePagoField(\'comprobante\', this.value)" />') +
+        '</div>' +
+        '<div style="margin-top:10px;">' + field("Observaciones", '<textarea rows="2" onchange="App.updatePagoField(\'observaciones\', this.value)">' + esc(pf.observaciones) + '</textarea>') + '</div>' +
+        '<div style="margin-top:10px;">' + field("📷 Subir foto del comprobante", '<input type="file" accept="image/*" onchange="App.uploadPagoFoto(this)" />') +
+          (pf.comprobanteFoto ? '<img src="' + pf.comprobanteFoto + '" class="thumb" style="margin-top:6px;" onclick="App.viewDoc(\'' + pf.comprobanteFoto.replace(/'/g,"") + '\')" />' : '') + '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:14px;">' +
+          '<button class="btn btn-accent" onclick="App.savePago()">Guardar pago</button>' +
+          '<button class="btn" onclick="App.cancelPagoForm()">Cancelar</button>' +
+        '</div>' +
+      '</div>';
+    }
+
+    var historialHtml = pagosFiltrados.length === 0
+      ? '<div style="color:var(--text-dim);font-size:14px;">Aún no hay pagos registrados.</div>'
+      : '<div class="scroll" style="display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto;">' +
+        pagosFiltrados.map(function(p){
+          return '<div style="display:flex;gap:10px;padding:8px 10px;background:var(--surface2);border-radius:8px;font-size:13px;align-items:center;">' +
+            (p.comprobanteFoto ? '<img src="' + p.comprobanteFoto + '" class="thumb" style="width:44px;height:44px;" onclick="App.viewDoc(\'' + p.comprobanteFoto.replace(/'/g,"") + '\')" />' : '') +
+            '<div><div style="font-weight:600;">' + fmtCOP(p.valor) + ' · ' + esc(p.tipo) + (p.cuota ? (' · Cuota #' + p.cuota) : '') + '</div>' +
+            '<div style="color:var(--text-dim);">' + fmtDate(p.fecha) + ' ' + esc(p.hora) + ' · ' + esc(p.medio) + (p.cuenta ? (' · ' + esc(p.cuenta)) : '') +
+            (p.saldoDespues !== undefined ? (' · Saldo después: ' + fmtCOP(p.saldoDespues)) : '') + '</div>' +
+            (p.observaciones ? '<div style="color:var(--text-dim);">' + esc(p.observaciones) + '</div>' : '') + '</div>' +
+          '</div>';
+        }).join("") + '</div>';
+
+    return '<div class="stack">' +
+      sectionTitle("Financiación", esc(f.entidad)) +
+
+      infoCard("💰 Cuota inicial", '<div class="grid2">' +
+        field("Valor de la cuota inicial", '<input type="number" value="' + f.cuotaInicial.valor + '" onchange="App.updateField(\'financiacion.cuotaInicial.valor\', this.value, true)" />') +
+        field("Fecha", '<input type="date" value="' + esc(f.cuotaInicial.fecha) + '" onchange="App.updateField(\'financiacion.cuotaInicial.fecha\', this.value)" />') +
+      '</div><div style="font-size:12px;color:var(--text-dim);margin-top:8px;">Se cuenta dentro del total pagado, separada de las 49 cuotas.</div>') +
+
+      '<div class="card" style="padding:16px;">' +
+        '<div class="row-between" style="margin-bottom:10px;"><div style="font-weight:600;">Configuración de la financiación</div>' +
+        (f.capital === 0 ? pill("warn","Valores provisionales") : '') + '</div>' +
+        '<div style="font-size:13px;color:var(--text-dim);margin-bottom:12px;">Mientras no tengas la tabla de amortización legible, el sistema usa ' + fmtCOP(f.valorCuotaProvisional) + ' por cuota como referencia provisional. Edita cada cuota en la pestaña "Cuotas" cuando tengas los valores reales — no se inventan cifras.</div>' +
+        '<div class="grid2">' +
+          field("Número de cuotas", '<input type="number" value="' + f.numCuotas + '" onchange="App.updateNumCuotas(this.value)" />') +
+          field("Valor cuota provisional", '<input type="number" value="' + f.valorCuotaProvisional + '" onchange="App.updateField(\'financiacion.valorCuotaProvisional\', this.value, true)" />') +
+          field("Capital financiado (si lo conoces)", '<input type="number" value="' + f.capital + '" onchange="App.updateField(\'financiacion.capital\', this.value, true)" />') +
+          field("Tasa de interés", '<input value="' + esc(f.tasa) + '" placeholder="Ej: 1.8% M.V." onchange="App.updateField(\'financiacion.tasa\', this.value)" />') +
+          field("Fecha primera cuota", '<input type="date" value="' + esc(f.fechaPrimera) + '" onchange="App.updateField(\'financiacion.fechaPrimera\', this.value)" />') +
+          field("Fecha última cuota", '<input type="date" value="' + esc(f.fechaUltima) + '" onchange="App.updateField(\'financiacion.fechaUltima\', this.value)" />') +
+          field("Otros cobros", '<input value="' + esc(f.otrosCobros) + '" onchange="App.updateField(\'financiacion.otrosCobros\', this.value)" />') +
+        '</div>' +
+        (f.saldoAFavor > 0 ? '<div style="margin-top:10px;font-size:13px;color:var(--good);">Saldo a favor sin aplicar: ' + fmtCOP(f.saldoAFavor) + '</div>' : '') +
+      '</div>' +
+
+      '<div class="grid-stat">' +
+        '<div class="card" style="padding:14px;"><div style="font-size:12px;color:var(--text-dim);">Total financiado (49 cuotas)</div><div class="mono" style="font-size:19px;font-weight:600;">' + fmtCOP(totals.totalFinanciado) + '</div></div>' +
+        '<div class="card" style="padding:14px;"><div style="font-size:12px;color:var(--text-dim);">Total pagado (incl. cuota inicial)</div><div class="mono" style="font-size:19px;font-weight:600;">' + fmtCOP(totals.totalPagado) + '</div></div>' +
+        '<div class="card" style="padding:14px;"><div style="font-size:12px;color:var(--text-dim);">Saldo pendiente</div><div class="mono" style="font-size:19px;font-weight:600;">' + fmtCOP(totals.saldoPendiente) + '</div></div>' +
+        '<div class="card" style="padding:14px;"><div style="font-size:12px;color:var(--text-dim);">% pagado (de las cuotas)</div><div class="mono" style="font-size:19px;font-weight:600;">' + totals.pct.toFixed(1) + '%</div></div>' +
+      '</div>' +
+
+      (this.ui.pagoForm ? '' : '<button class="btn btn-accent" style="align-self:flex-start;width:fit-content;" onclick="App.openPagoForm()">➕ Registrar pago</button>') +
+      pagoFormHtml +
+
+      '<div class="card" style="padding:16px;">' +
+        '<div class="row-between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">' +
+        '<div style="font-weight:600;">Historial de pagos (' + d.pagos.length + ')</div>' +
+        '<select style="width:170px;" onchange="App.setFilterTipo(this.value)">' +
+          '<option value="">Todos los tipos</option>' +
+          ["Cuota completa","Abono","Pago anticipado","Otro"].map(function(t){ return '<option' + (t===App.ui.filterTipo?' selected':'') + '>' + t + '</option>'; }).join("") +
+        '</select></div>' +
+        historialHtml +
+      '</div>' +
+    '</div>';
+  },
+
+  /* ---------- Cuotas ---------- */
+  renderCuotas: function() {
+    var d = this.state;
+    var grid = d.cuotas.map(function(c){
+      var tone = c.estado === "pagada" ? "good" : c.estado === "parcial" ? "warn" : "bad";
+      var col = toneVar(tone);
+      return '<button class="cuota-btn mono" style="background:' + col + '22;color:' + col + ';border:1px solid ' + col + '66;" onclick="App.selectCuota(' + c.numero + ')">' +
+        String(c.numero).padStart(2,"0") + '</button>';
+    }).join("");
+
+    var detail = "";
+    if (this.ui.selCuota) {
+      var c = d.cuotas.find(function(x){ return x.numero === App.ui.selCuota; });
+      if (c) {
+        var histHtml = "";
+        if (this.ui.showCuotaHist) {
+          histHtml = (c.historial && c.historial.length)
+            ? '<div class="scroll" style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-top:10px;">' +
+              c.historial.map(function(h){ return '<div style="font-size:12px;background:var(--surface2);padding:6px 8px;border-radius:6px;">' + esc(h.fecha) + ' · ' + esc(h.campo) + ': ' + esc(h.valorAnterior) + ' → ' + esc(h.valorNuevo) + '</div>'; }).join("") + '</div>'
+            : '<div style="font-size:12px;color:var(--text-dim);margin-top:10px;">Sin cambios registrados todavía.</div>';
+        }
+        detail = '<div class="card" style="padding:18px;">' +
+          '<div class="row-between" style="margin-bottom:12px;"><div style="font-weight:600;">Cuota #' + c.numero + ' ' + (c.provisional ? pill("warn","Provisional") : '') + '</div>' +
+          '<button class="btn btn-sm" onclick="App.closeCuota()">✕</button></div>' +
+          '<div class="grid2">' +
+            field("Fecha programada", '<input type="date" value="' + esc(c.fecha) + '" onchange="App.saveCuotaField(' + c.numero + ',\'fecha\',this.value)" />') +
+            field("Valor cuota", '<input type="number" value="' + c.valor + '" onchange="App.saveCuotaField(' + c.numero + ',\'valor\',this.value,true)" />') +
+            field("Capital", '<input type="number" value="' + c.capital + '" onchange="App.saveCuotaField(' + c.numero + ',\'capital\',this.value,true)" />') +
+            field("Interés", '<input type="number" value="' + c.interes + '" onchange="App.saveCuotaField(' + c.numero + ',\'interes\',this.value,true)" />') +
+            field("Estado", '<select onchange="App.saveCuotaField(' + c.numero + ',\'estado\',this.value)">' +
+              ["pendiente","parcial","pagada"].map(function(s){ return '<option value="' + s + '"' + (s===c.estado?' selected':'') + '>' + s.charAt(0).toUpperCase()+s.slice(1) + '</option>'; }).join("") + '</select>') +
+            field("Fecha real de pago", '<input type="date" value="' + esc(c.fechaPagoReal) + '" onchange="App.saveCuotaField(' + c.numero + ',\'fechaPagoReal\',this.value)" />') +
+            field("Valor realmente pagado", '<input type="number" value="' + c.valorPagado + '" onchange="App.saveCuotaField(' + c.numero + ',\'valorPagado\',this.value,true)" />') +
+            field("Comprobante", '<input value="' + esc(c.comprobante) + '" onchange="App.saveCuotaField(' + c.numero + ',\'comprobante\',this.value)" />') +
+          '</div>' +
+          '<div style="margin-top:10px;">' + field("Observaciones", '<textarea rows="2" onchange="App.saveCuotaField(' + c.numero + ',\'observaciones\',this.value)">' + esc(c.observaciones) + '</textarea>') + '</div>' +
+          '<button class="btn btn-sm" style="margin-top:10px;" onclick="App.toggleCuotaHist()">✏️ ' + (this.ui.showCuotaHist ? "Ocultar" : "Ver") + ' historial de cambios</button>' +
+          histHtml +
+        '</div>';
+      }
+    }
+
+    return '<div class="stack">' +
+      sectionTitle("Control de cuotas", d.cuotas.length + " cuotas — toca una para ver o editar el detalle") +
+      '<div style="display:flex;gap:14px;font-size:12px;color:var(--text-dim);">' +
+        '<span>' + pill("bad","·") + ' Pendiente</span><span>' + pill("warn","·") + ' Parcial</span><span>' + pill("good","·") + ' Pagada</span>' +
+      '</div>' +
+      '<div class="grid-cuotas">' + grid + '</div>' +
+      detail +
+    '</div>';
+  },
+
+  /* ---------- Mantenimiento ---------- */
+  renderMantenimiento: function() {
+    var d = this.state;
+    var km = d.moto.kmActual;
+    var proxAceite = nextAceiteKm(d);
+    var proxRev = nextRevisionKm(d);
+
+    var histKmHtml = d.mantenimiento.kmActualHistorial.slice(0,8).map(function(h){
+      return '<div style="font-size:12px;color:var(--text-dim);">' + fmtDate(h.fecha) + ' ' + h.hora + ' — ' + h.km.toLocaleString("es-CO") + ' km</div>';
+    }).join("");
+
+    var aceiteForm = "";
+    if (this.ui.openMaint.aceite) {
+      var af = this.ui.maintForm.aceite || {};
+      aceiteForm = '<div class="grid2" style="margin:10px 0;">' +
+        field("Fecha", '<input type="date" value="' + esc(af.fecha||"") + '" onchange="App.updateMaintForm(\'aceite\',\'fecha\',this.value)" />') +
+        field("Kilometraje", '<input type="number" value="' + esc(af.kilometraje||"") + '" onchange="App.updateMaintForm(\'aceite\',\'kilometraje\',this.value)" />') +
+        field("Tipo de aceite", '<input value="' + esc(af.tipoAceite||"") + '" onchange="App.updateMaintForm(\'aceite\',\'tipoAceite\',this.value)" />') +
+        field("Cantidad", '<input value="' + esc(af.cantidad||"") + '" onchange="App.updateMaintForm(\'aceite\',\'cantidad\',this.value)" />') +
+        field("Valor", '<input type="number" value="' + esc(af.valor||"") + '" onchange="App.updateMaintForm(\'aceite\',\'valor\',this.value)" />') +
+        field("Lugar", '<input value="' + esc(af.lugar||"") + '" onchange="App.updateMaintForm(\'aceite\',\'lugar\',this.value)" />') +
+        field("Observaciones", '<input value="' + esc(af.observaciones||"") + '" onchange="App.updateMaintForm(\'aceite\',\'observaciones\',this.value)" />') +
+        field("📷 Foto/comprobante", '<input type="file" accept="image/*" onchange="App.uploadMaintFoto(\'aceite\', this)" />') +
+        '<div style="align-self:end;"><button class="btn btn-accent" onclick="App.addMaintEntry(\'aceite\')">Guardar</button></div>' +
+      '</div>';
+    }
+    var aceiteHist = d.mantenimiento.aceite.historial.length
+      ? '<div class="scroll" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;">' +
+        d.mantenimiento.aceite.historial.map(function(h){
+          return '<div style="font-size:13px;background:var(--surface2);border-radius:8px;padding:8px 10px;display:flex;gap:8px;align-items:center;">' +
+            (h.foto ? '<img src="' + h.foto + '" class="thumb" style="width:36px;height:36px;" onclick="App.viewDoc(\'' + h.foto.replace(/'/g,"") + '\')" />' : '') +
+            '<div>' + fmtDate(h.fecha) + (h.kilometraje ? (' · ' + esc(h.kilometraje) + ' km') : '') + (h.tipoAceite ? (' · ' + esc(h.tipoAceite)) : '') + (h.valor ? (' · ' + fmtCOP(h.valor)) : '') + '</div></div>';
+        }).join("") + '</div>' : '';
+
+    var revForm = "";
+    if (this.ui.openMaint.revisiones) {
+      var rf = this.ui.maintForm.revisiones || {};
+      revForm = '<div class="grid2" style="margin:10px 0;">' +
+        field("Fecha", '<input type="date" value="' + esc(rf.fecha||"") + '" onchange="App.updateMaintForm(\'revisiones\',\'fecha\',this.value)" />') +
+        field("Kilometraje", '<input type="number" value="' + esc(rf.kilometraje||"") + '" onchange="App.updateMaintForm(\'revisiones\',\'kilometraje\',this.value)" />') +
+        field("Tipo de revisión", '<input value="' + esc(rf.tipoRevision||"") + '" onchange="App.updateMaintForm(\'revisiones\',\'tipoRevision\',this.value)" />') +
+        field("Lugar", '<input value="' + esc(rf.lugar||"") + '" onchange="App.updateMaintForm(\'revisiones\',\'lugar\',this.value)" />') +
+        field("Valor pagado", '<input type="number" value="' + esc(rf.valor||"") + '" onchange="App.updateMaintForm(\'revisiones\',\'valor\',this.value)" />') +
+        field("Observaciones", '<input value="' + esc(rf.observaciones||"") + '" onchange="App.updateMaintForm(\'revisiones\',\'observaciones\',this.value)" />') +
+        field("📷 Foto/comprobante", '<input type="file" accept="image/*" onchange="App.uploadMaintFoto(\'revisiones\', this)" />') +
+        '<div style="align-self:end;"><button class="btn btn-accent" onclick="App.addMaintEntry(\'revisiones\')">Guardar</button></div>' +
+      '</div>';
+    }
+    var revHist = d.mantenimiento.revisiones.historial.length
+      ? '<div class="scroll" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;">' +
+        d.mantenimiento.revisiones.historial.map(function(h){
+          return '<div style="font-size:13px;background:var(--surface2);border-radius:8px;padding:8px 10px;display:flex;gap:8px;align-items:center;">' +
+            (h.foto ? '<img src="' + h.foto + '" class="thumb" style="width:36px;height:36px;" onclick="App.viewDoc(\'' + h.foto.replace(/'/g,"") + '\')" />' : '') +
+            '<div>' + fmtDate(h.fecha) + (h.kilometraje ? (' · ' + esc(h.kilometraje) + ' km') : '') + (h.tipoRevision ? (' · ' + esc(h.tipoRevision)) : '') + (h.valor ? (' · ' + fmtCOP(h.valor)) : '') + '</div></div>';
+        }).join("") + '</div>' : '';
+
+    var componentesHtml = d.mantenimiento.componentes.map(function(c){
+      var next = nextGenericKm(c.intervaloKm, c.ultimoKm, km);
+      return '<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">' +
+        '<div>' + esc(c.nombre) + ' ' + pill(c.tipo === "manual" ? "good" : "warn", c.tipo === "manual" ? "Según manual" : "Intervalo estimado") + '</div>' +
+        '<input type="number" placeholder="Intervalo km" value="' + (c.intervaloKm || "") + '" onchange="App.updateComponente(\'' + c.id + '\',\'intervaloKm\',this.value,true)" />' +
+        '<div style="color:var(--text-dim);">' + (next ? ("Próximo: " + next.toLocaleString("es-CO") + " km") : "Revisar según estado") + '</div>' +
+        '<button class="btn btn-sm" onclick="App.marcarComponenteRealizado(\'' + c.id + '\')">✔ Hecho</button>' +
+      '</div>';
+    }).join("");
+
+    return '<div class="stack">' +
+      sectionTitle("Mantenimiento", "Basado en el manual oficial de Auteco para la MRX 150") +
+
+      '<div class="card" style="padding:16px;">' +
+        field("Kilometraje actual de la moto", '<input type="number" style="max-width:220px;" value="' + km + '" onchange="App.setKmActual(this.value)" />') +
+        (histKmHtml ? '<div style="margin-top:10px;"><div class="f-label">Últimas actualizaciones</div>' + histKmHtml + '</div>' : '') +
+      '</div>' +
+
+      '<div class="card" style="padding:16px;">' +
+        '<div class="row-between" style="margin-bottom:10px;"><div style="display:flex;align-items:center;gap:8px;font-weight:600;">💧 Cambio de aceite ' + pill("good","Según manual") + '</div>' +
+        '<button class="btn btn-sm" onclick="App.toggleMaint(\'aceite\')">➕ Registrar cambio</button></div>' +
+        '<div style="font-size:13px;color:var(--text-dim);margin-bottom:6px;">Especificación del manual: ' + esc(d.mantenimiento.aceite.especificacion) + '</div>' +
+        '<div class="grid2" style="margin-bottom:10px;">' + field("Intervalo (km)", '<input type="number" value="' + d.mantenimiento.aceite.intervaloKm + '" onchange="App.updateMaintConfig(\'aceite\',\'intervaloKm\',this.value,true)" />') + '</div>' +
+        '<div style="font-size:14px;margin-bottom:10px;">🛢️ Próximo cambio: <b>' + proxAceite.toLocaleString("es-CO") + ' km</b> — faltan ' + (proxAceite-km).toLocaleString("es-CO") + ' km</div>' +
+        aceiteForm + aceiteHist +
+      '</div>' +
+
+      '<div class="card" style="padding:16px;">' +
+        '<div class="row-between" style="margin-bottom:10px;"><div style="display:flex;align-items:center;gap:8px;font-weight:600;">🔧 Revisiones técnicas ' + pill("good","Según manual") + '</div>' +
+        '<button class="btn btn-sm" onclick="App.toggleMaint(\'revisiones\')">➕ Registrar revisión</button></div>' +
+        '<div class="grid2" style="margin-bottom:10px;">' +
+          field("Puntos fijos (km, separados por coma)", '<input value="' + d.mantenimiento.revisiones.puntos.join(",") + '" onchange="App.updateRevisionPuntos(this.value)" />') +
+          field("Intervalo continuo después del último punto", '<input type="number" value="' + d.mantenimiento.revisiones.intervaloContinuo + '" onchange="App.updateMaintConfig(\'revisiones\',\'intervaloContinuo\',this.value,true)" />') +
+        '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">' + d.mantenimiento.revisiones.puntos.map(function(p){ return pill(p<=km?"good":"warn", p.toLocaleString("es-CO")+" km"); }).join(" ") + '</div>' +
+        '<div style="font-size:14px;margin-bottom:10px;">🔧 Próxima revisión: <b>' + proxRev.toLocaleString("es-CO") + ' km</b> — faltan ' + (proxRev-km).toLocaleString("es-CO") + ' km</div>' +
+        revForm + revHist +
+      '</div>' +
+
+      infoCard("🧰 Mantenimiento completo por componente", '<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">El manual no especifica un kilometraje exacto para cada pieza; configura el intervalo cuando lo sepas o revísala según su estado.</div>' + componentesHtml) +
+    '</div>';
+  },
+
+  /* ---------- Combustible ---------- */
+  renderCombustible: function() {
+    var d = this.state;
+    var ordered = d.tanqueos.slice().sort(function(a,b){ return a.km - b.km; });
+    var withDist = ordered.map(function(t, i){
+      var prev = i > 0 ? ordered[i-1] : null;
+      return Object.assign({}, t, { recorrido: prev ? (t.km - prev.km) : null });
+    });
+    var byId = {}; withDist.forEach(function(t){ byId[t.id] = t; });
+    var display = d.tanqueos.map(function(t){ return byId[t.id] || t; });
+
+    var totalGastado = d.tanqueos.reduce(function(s,t){ return s + (Number(t.valor)||0); }, 0);
+    var promedio = d.tanqueos.length ? totalGastado / d.tanqueos.length : 0;
+
+    var formHtml = "";
+    if (this.ui.tanqueoForm) {
+      var tf = this.ui.tanqueoForm;
+      formHtml = '<div class="card" style="padding:18px;">' +
+        '<div class="row-between" style="margin-bottom:12px;"><div style="font-weight:600;">Registrar tanqueo</div><button class="btn btn-sm" onclick="App.cancelTanqueoForm()">✕</button></div>' +
+        '<div class="grid2">' +
+          field("Fecha", '<input type="date" value="' + esc(tf.fecha) + '" onchange="App.updateTanqueoField(\'fecha\',this.value)" />') +
+          field("Hora", '<input type="time" value="' + esc(tf.hora) + '" onchange="App.updateTanqueoField(\'hora\',this.value)" />') +
+          field("Kilometraje", '<input type="number" value="' + esc(tf.km) + '" onchange="App.updateTanqueoField(\'km\',this.value)" />') +
+          field("Dinero pagado", '<input type="number" value="' + esc(tf.valor) + '" onchange="App.updateTanqueoField(\'valor\',this.value)" />') +
+          field("Cantidad (galones/litros, opcional)", '<input value="' + esc(tf.cantidad) + '" onchange="App.updateTanqueoField(\'cantidad\',this.value)" />') +
+          field("Precio por unidad (opcional)", '<input value="' + esc(tf.precioUnidad) + '" onchange="App.updateTanqueoField(\'precioUnidad\',this.value)" />') +
+          field("Estación de servicio", '<input value="' + esc(tf.estacion) + '" onchange="App.updateTanqueoField(\'estacion\',this.value)" />') +
+        '</div>' +
+        '<div style="margin-top:10px;">' + field("Observaciones", '<textarea rows="2" onchange="App.updateTanqueoField(\'observaciones\',this.value)">' + esc(tf.observaciones) + '</textarea>') + '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:14px;"><button class="btn btn-accent" onclick="App.saveTanqueo()">Guardar</button><button class="btn" onclick="App.cancelTanqueoForm()">Cancelar</button></div>' +
+      '</div>';
+    }
+
+    var listHtml = display.length ? '<div class="scroll" style="display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto;">' +
+      display.map(function(t){
+        return '<div style="padding:8px 10px;background:var(--surface2);border-radius:8px;font-size:13px;">' +
+          '<div style="font-weight:600;">' + fmtCOP(t.valor) + ' · ' + t.km.toLocaleString("es-CO") + ' km' + (t.estacion ? (' · ' + esc(t.estacion)) : '') + '</div>' +
+          '<div style="color:var(--text-dim);">' + fmtDate(t.fecha) + ' ' + esc(t.hora) +
+          (t.recorrido !== null ? (' · Recorridos ' + t.recorrido.toLocaleString("es-CO") + ' km desde el tanqueo anterior') : '') +
+          (t.cantidad ? (' · ' + t.cantidad + ' gal/L') : '') + '</div>' +
+        '</div>';
+      }).join("") + '</div>' : '<div style="color:var(--text-dim);font-size:14px;">Aún no hay tanqueos registrados.</div>';
+
+    return '<div class="stack">' +
+      sectionTitle("Tanqueos de gasolina") +
+      '<div class="grid-stat">' +
+        '<div class="card" style="padding:14px;"><div style="font-size:12px;color:var(--text-dim);">Total gastado</div><div class="mono" style="font-size:19px;font-weight:600;">' + fmtCOP(totalGastado) + '</div></div>' +
+        '<div class="card" style="padding:14px;"><div style="font-size:12px;color:var(--text-dim);">Promedio por tanqueo</div><div class="mono" style="font-size:19px;font-weight:600;">' + fmtCOP(promedio) + '</div></div>' +
+        '<div class="card" style="padding:14px;"><div style="font-size:12px;color:var(--text-dim);">Tanqueos registrados</div><div class="mono" style="font-size:19px;font-weight:600;">' + d.tanqueos.length + '</div></div>' +
+      '</div>' +
+      (this.ui.tanqueoForm ? '' : '<button class="btn btn-accent" style="width:fit-content;" onclick="App.openTanqueoForm()">➕ Registrar tanqueo</button>') +
+      formHtml +
+      infoCard("Historial de tanqueos", listHtml) +
+    '</div>';
+  },
+
+  /* ---------- Compras e inventario ---------- */
+  renderCompras: function() {
+    var d = this.state;
+    var comprasFormHtml = "";
+    if (this.ui.comprasForm) {
+      var cf = this.ui.comprasForm;
+      comprasFormHtml = '<div class="card" style="padding:18px;">' +
+        '<div class="row-between" style="margin-bottom:12px;"><div style="font-weight:600;">Añadir producto a comprar</div><button class="btn btn-sm" onclick="App.cancelComprasForm()">✕</button></div>' +
+        '<div class="grid2">' +
+          field("Nombre", '<input value="' + esc(cf.nombre) + '" onchange="App.updateComprasField(\'nombre\',this.value)" />') +
+          field("Color", '<input value="' + esc(cf.color) + '" onchange="App.updateComprasField(\'color\',this.value)" />') +
+          field("Cantidad", '<input type="number" value="' + cf.cantidad + '" onchange="App.updateComprasField(\'cantidad\',this.value)" />') +
+          field("Precio (opcional)", '<input type="number" value="' + esc(cf.precio) + '" onchange="App.updateComprasField(\'precio\',this.value)" />') +
+        '</div>' +
+        '<div style="margin-top:10px;">' + field("Descripción (opcional)", '<textarea rows="2" onchange="App.updateComprasField(\'descripcion\',this.value)">' + esc(cf.descripcion) + '</textarea>') + '</div>' +
+        '<div style="margin-top:10px;">' + field("📷 Foto (opcional)", '<input type="file" accept="image/*" onchange="App.uploadComprasFoto(this)" />') + '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:14px;"><button class="btn btn-accent" onclick="App.saveComprasItem()">Añadir</button><button class="btn" onclick="App.cancelComprasForm()">Cancelar</button></div>' +
+      '</div>';
+    }
+    var listaHtml = d.compras.lista.map(function(item){
+      return '<div style="display:flex;gap:10px;align-items:center;padding:8px 10px;background:var(--surface2);border-radius:8px;font-size:13px;">' +
+        (item.foto ? '<img src="' + item.foto + '" class="thumb" onclick="App.viewDoc(\'' + item.foto.replace(/'/g,"") + '\')" />' : '') +
+        '<div style="flex:1;"><div style="font-weight:600;">' + esc(item.nombre) + (item.color?(' · '+esc(item.color)):'') + ' × ' + item.cantidad + '</div>' +
+        (item.precio ? '<div style="color:var(--text-dim);">' + fmtCOP(item.precio) + '</div>' : '') +
+        (item.descripcion ? '<div style="color:var(--text-dim);">' + esc(item.descripcion) + '</div>' : '') + '</div>' +
+        (item.estado === "pendiente" ? pill("bad","Pendiente") + ' <button class="btn btn-sm" onclick="App.marcarComprado(\'' + item.id + '\')">✅ Comprado</button>' : pill("good","Comprado")) +
+      '</div>';
+    }).join("");
+
+    var invFormHtml = "";
+    if (this.ui.inventarioForm) {
+      var vf = this.ui.inventarioForm;
+      invFormHtml = '<div class="grid2" style="margin:10px 0;">' +
+        field("Nombre del producto", '<input value="' + esc(vf.nombre) + '" onchange="App.updateInventarioField(\'nombre\',this.value)" />') +
+        field("Cantidad disponible", '<input type="number" value="' + vf.cantidad + '" onchange="App.updateInventarioField(\'cantidad\',this.value)" />') +
+        '<div style="align-self:end;"><button class="btn btn-accent" onclick="App.saveInventarioItem()">Guardar</button></div>' +
+      '</div>';
+    }
+    var invHtml = d.compras.inventario.map(function(item){
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface2);border-radius:8px;font-size:13px;">' +
+        '<div>' + esc(item.nombre) + '</div>' +
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+          (item.cantidadDisponible <= 0 ? pill("bad","Sin unidades") : pill("good", item.cantidadDisponible + " disponibles")) +
+          '<button class="btn btn-sm" onclick="App.descontarInventario(\'' + item.id + '\')">➖ Descontar 1</button>' +
+        '</div></div>';
+    }).join("");
+
+    var realizadasHtml = d.compras.realizadas.map(function(r){
+      return '<div style="display:flex;gap:10px;align-items:center;padding:8px 10px;background:var(--surface2);border-radius:8px;font-size:13px;">' +
+        (r.foto ? '<img src="' + r.foto + '" class="thumb" style="width:40px;height:40px;" onclick="App.viewDoc(\'' + r.foto.replace(/'/g,"") + '\')" />' : '') +
+        '<div>' + esc(r.producto) + ' × ' + r.cantidad + (r.precio ? (' · ' + fmtCOP(r.precio)) : '') + ' · ' + fmtDate(r.fecha) + '</div></div>';
+    }).join("");
+
+    return '<div class="stack">' +
+      sectionTitle("Compras e inventario") +
+      infoCard("🛒 Cosas por comprar", (this.ui.comprasForm ? '' : '<button class="btn btn-accent" style="margin-bottom:10px;" onclick="App.openComprasForm()">➕ Añadir producto</button>') +
+        comprasFormHtml + '<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">' + (listaHtml || '<div style="color:var(--text-dim);font-size:13px;">Sin productos en la lista.</div>') + '</div>') +
+      infoCard("📦 Inventario disponible", (this.ui.inventarioForm ? '' : '<button class="btn" style="margin-bottom:10px;" onclick="App.openInventarioForm()">➕ Añadir producto al inventario</button>') +
+        invFormHtml + '<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">' + (invHtml || '<div style="color:var(--text-dim);font-size:13px;">Sin productos en inventario.</div>') + '</div>') +
+      infoCard("🧾 Historial de compras realizadas", '<div style="display:flex;flex-direction:column;gap:8px;">' + (realizadasHtml || '<div style="color:var(--text-dim);font-size:13px;">Aún no hay compras registradas.</div>') + '</div>') +
+    '</div>';
+  },
+
+  /* ---------- Legal ---------- */
+  renderLegal: function() {
+    var d = this.state;
+    var motoFields = [
+      ["marca","Marca"],["linea","Línea"],["cilindraje","Cilindraje"],["modelo","Modelo"],["color","Color"],
+      ["clase","Clase"],["servicio","Servicio"],["combustible","Combustible"],["capacidadPersonas","Capacidad (personas)"],
+      ["carroceria","Carrocería"],["potencia","Potencia"],["placa","Placa"],["vin","VIN"],["motor","Número de motor"],
+      ["chasis","Número de chasis"],["propietario","Propietario"],["cedula","Cédula"],
+      ["numeroLicenciaTransito","N.º licencia de tránsito"],["declaracionImportacion","Declaración de importación"],
+      ["organismoTransito","Organismo de tránsito"],["limitacionPropiedad","Limitación a la propiedad"],["concesionario","Concesionario"]
+    ];
+    var motoDateFields = [["fechaImportacion","Fecha de importación"],["fechaMatricula","Fecha de matrícula"],["fechaExpedicionLicencia","Fecha de expedición de licencia"]];
+    var motoHtml = motoFields.map(function(f){
+      return field(f[1], '<input value="' + esc(d.moto[f[0]]) + '" onchange="App.updateField(\'moto.' + f[0] + '\', this.value)" />');
+    }).join("") + motoDateFields.map(function(f){
+      return field(f[1], '<input type="date" value="' + esc(d.moto[f[0]]) + '" onchange="App.updateField(\'moto.' + f[0] + '\', this.value)" />');
+    }).join("") + field("Kilometraje actual", '<input type="number" value="' + d.moto.kmActual + '" onchange="App.updateField(\'moto.kmActual\', this.value, true)" />');
+
+    var docBtns = function(path, filename) {
+      var v = getPath(d, path);
+      return '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">' +
+        '<input type="file" accept="image/*" style="max-width:220px;" onchange="App.uploadPhoto(\'' + path + '\', this)" />' +
+        '<button class="btn btn-sm" onclick="App.viewDoc(' + (v ? ("'"+v+"'") : "''") + ')">👁️ Ver documento</button>' +
+        '<button class="btn btn-sm" onclick="App.downloadDoc(' + (v ? ("'"+v+"'") : "''") + ', \'' + filename + '\')">⬇️ Descargar</button>' +
+      '</div>';
+    };
+
+    var condicionesGarantia = [
+      "Debe mantenerse al día el pago de las cuotas del contrato, cuando aplique.",
+      "El reporte del siniestro debe hacerse dentro del plazo establecido en el contrato.",
+      "El vehículo debe contar con SOAT vigente al momento de la reclamación.",
+      "Los trámites de traspaso, cancelación de matrícula y demás gestiones a cargo del titular deben quedar registrados según el contrato.",
+      "Si la moto fue adquirida a crédito, la indemnización puede destinarse primero a cubrir el saldo pendiente del crédito.",
+      "Existen exclusiones por uso indebido, competencias, alquiler, actividades ilícitas y otros casos señalados en el contrato.",
+      "La mora prolongada puede dar lugar a suspensión o cancelación de la garantía."
+    ];
+
+    var dgFin = daysUntil(d.garantiaSuplementaria.vigenciaFin);
+
+    return '<div class="stack">' +
+      sectionTitle("Legal y documentos", "Un registro independiente por cada documento") +
+
+      infoCard("🏍️ Datos legales de la motocicleta", '<div class="grid2">' + motoHtml + '</div>') +
+
+      infoCard("🪪 Tarjeta de propiedad", '<div style="font-size:12px;color:var(--text-dim);">Los datos se toman de la información legal de la moto de arriba.</div>' +
+        docBtns("tarjetaPropiedad.foto", "tarjeta-propiedad.jpg")) +
+
+      infoCard("🏍️ Garantía de fábrica (Auteco)", '<div style="font-size:13px;color:var(--text-dim);margin-bottom:8px;">' +
+        d.garantiaFabrica.meses + ' meses o ' + d.garantiaFabrica.km.toLocaleString("es-CO") + ' km, lo primero que ocurra.</div>' +
+        '<div class="grid2">' + field("Fecha de inicio", '<input type="date" value="' + esc(d.garantiaFabrica.fechaInicio) + '" onchange="App.updateField(\'garantiaFabrica.fechaInicio\', this.value)" />') + '</div>') +
+
+      infoCard("🛡️ Garantía suplementaria — GARANTÍA SUPLEMENTARIA VIGENTE",
+        (dgFin !== null ? ('<div style="margin-bottom:10px;">' + pill(dgFin < 0 ? "bad" : dgFin <= 30 ? "warn" : "good", dgFin < 0 ? "Vencida" : "Faltan " + dgFin + " días") + '</div>') : '') +
+        '<div class="grid2">' +
+          field("Empresa", '<input value="' + esc(d.garantiaSuplementaria.aseguradora) + '" onchange="App.updateField(\'garantiaSuplementaria.aseguradora\', this.value)" />') +
+          field("Número de garantía", '<input value="' + esc(d.garantiaSuplementaria.numero) + '" onchange="App.updateField(\'garantiaSuplementaria.numero\', this.value)" />') +
+          field("Vehículo", '<input value="' + esc(d.garantiaSuplementaria.vehiculo) + '" onchange="App.updateField(\'garantiaSuplementaria.vehiculo\', this.value)" />') +
+          field("Titular", '<input value="' + esc(d.garantiaSuplementaria.titular) + '" onchange="App.updateField(\'garantiaSuplementaria.titular\', this.value)" />') +
+          field("Inicio", '<input type="date" value="' + esc(d.garantiaSuplementaria.vigenciaInicio) + '" onchange="App.updateField(\'garantiaSuplementaria.vigenciaInicio\', this.value)" />') +
+          field("Fin", '<input type="date" value="' + esc(d.garantiaSuplementaria.vigenciaFin) + '" onchange="App.updateField(\'garantiaSuplementaria.vigenciaFin\', this.value)" />') +
+          field("Cobertura pérdida total (daños)", '<input value="' + esc(d.garantiaSuplementaria.coberturaPerdidaTotalDanos) + '" onchange="App.updateField(\'garantiaSuplementaria.coberturaPerdidaTotalDanos\', this.value)" />') +
+          field("Cobertura pérdida total (hurto)", '<input value="' + esc(d.garantiaSuplementaria.coberturaPerdidaTotalHurto) + '" onchange="App.updateField(\'garantiaSuplementaria.coberturaPerdidaTotalHurto\', this.value)" />') +
+          field("Valor pagado", '<input type="number" value="' + d.garantiaSuplementaria.valorPagado + '" onchange="App.updateField(\'garantiaSuplementaria.valorPagado\', this.value, true)" />') +
+        '</div>' +
+        '<div style="margin-top:12px;"><div class="f-label">Condiciones importantes (resumen)</div>' +
+        '<ul style="margin:0;padding-left:18px;font-size:13px;color:var(--text-dim);line-height:1.6;">' +
+        condicionesGarantia.map(function(c){ return '<li>' + esc(c) + '</li>'; }).join("") + '</ul></div>' +
+        '<div style="margin-top:12px;"><div class="f-label">Firma digital</div><div class="grid2">' +
+          field("Fecha de firma", '<input type="date" value="' + esc(d.garantiaSuplementaria.firmaDigital.fecha) + '" onchange="App.updateField(\'garantiaSuplementaria.firmaDigital.fecha\', this.value)" />') +
+          field("Código de verificación", '<input value="' + esc(d.garantiaSuplementaria.firmaDigital.codigoVerificacion) + '" onchange="App.updateField(\'garantiaSuplementaria.firmaDigital.codigoVerificacion\', this.value)" />') +
+        '</div>' + docBtns("garantiaSuplementaria.firmaDigital.foto", "firma-digital-garantia.jpg") + '</div>' +
+        '<div style="margin-top:12px;"><div class="f-label">📄 Contrato completo</div>' + docBtns("garantiaSuplementaria.foto", "garantia-suplementaria.jpg") + '</div>') +
+
+      infoCard("🚨 SOAT — SOAT VIGENTE",
+        (d.soat.vigenciaFin ? ('<div style="margin-bottom:10px;">' + pill(daysUntil(d.soat.vigenciaFin) < 0 ? "bad" : daysUntil(d.soat.vigenciaFin) <= 30 ? "warn" : "good", daysUntil(d.soat.vigenciaFin) < 0 ? "Vencido" : "Faltan " + daysUntil(d.soat.vigenciaFin) + " días") + '</div>') : '') +
+        '<div class="grid2">' +
+          field("Aseguradora", '<input value="' + esc(d.soat.aseguradora) + '" onchange="App.updateField(\'soat.aseguradora\', this.value)" />') +
+          field("Fecha de expedición", '<input type="date" value="' + esc(d.soat.fechaExpedicion) + '" onchange="App.updateField(\'soat.fechaExpedicion\', this.value)" />') +
+          field("Inicio de vigencia", '<input type="date" value="' + esc(d.soat.vigenciaInicio) + '" onchange="App.updateField(\'soat.vigenciaInicio\', this.value)" />') +
+          field("Fin de vigencia", '<input type="date" value="' + esc(d.soat.vigenciaFin) + '" onchange="App.updateField(\'soat.vigenciaFin\', this.value)" />') +
+          field("Valor pagado", '<input type="number" value="' + d.soat.valorPagado + '" onchange="App.updateField(\'soat.valorPagado\', this.value, true)" />') +
+        '</div>' + docBtns("soat.foto", "soat.jpg")) +
+
+      infoCard("📄 Certificado de emisiones", '<div class="grid2">' +
+          field("Clase", '<input value="' + esc(d.tecnomecanica.clase) + '" onchange="App.updateField(\'tecnomecanica.clase\', this.value)" />') +
+          field("Fecha de prueba", '<input type="date" value="' + esc(d.tecnomecanica.fechaPrueba) + '" onchange="App.updateField(\'tecnomecanica.fechaPrueba\', this.value)" />') +
+          field("Fecha de vencimiento", '<input type="date" value="' + esc(d.tecnomecanica.fechaVencimiento) + '" onchange="App.updateField(\'tecnomecanica.fechaVencimiento\', this.value)" />') +
+        '</div>' + docBtns("tecnomecanica.foto", "certificado-emisiones.jpg")) +
+
+      infoCard("📂 Mis documentos", this.documentosListHtml()) +
+    '</div>';
+  },
+  documentosListHtml: function() {
+    var d = this.state;
+    var docsHtml = d.documentos.map(function(doc){
+      return '<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;font-size:13px;">' +
+        '<div style="font-weight:600;">' + esc(doc.nombre) + '</div><div style="color:var(--text-dim);">' + esc(doc.tipo) + (doc.notas ? (' · ' + esc(doc.notas)) : '') + '</div></div>';
+    }).join("");
+    return '<div style="display:flex;flex-direction:column;gap:8px;">' + docsHtml + '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:12px;"><input id="new-doc-name" placeholder="Nuevo documento" />' +
+      '<button class="btn" onclick="App.addDocumento()">➕ Añadir</button></div>';
+  },
+
+  /* ---------- Galería ---------- */
+  renderGaleria: function() {
+    var d = this.state;
+    var formHtml = "";
+    if (this.ui.galeriaForm) {
+      var gf = this.ui.galeriaForm;
+      formHtml = '<div class="card" style="padding:18px;">' +
+        '<div class="row-between" style="margin-bottom:12px;"><div style="font-weight:600;">Añadir foto</div><button class="btn btn-sm" onclick="App.cancelGaleriaForm()">✕</button></div>' +
+        '<div class="grid2">' +
+          field("Fecha", '<input type="date" value="' + esc(gf.fecha) + '" onchange="App.updateGaleriaField(\'fecha\',this.value)" />') +
+          field("Categoría", '<select onchange="App.updateGaleriaField(\'categoria\',this.value)">' +
+            ["Moto","Documentos","Comprobantes","Mantenimiento","Repuestos","Accesorios","Otro"].map(function(c){ return '<option' + (c===gf.categoria?' selected':'') + '>' + c + '</option>'; }).join("") + '</select>') +
+        '</div>' +
+        '<div style="margin-top:10px;">' + field("Descripción (opcional)", '<input value="' + esc(gf.descripcion) + '" onchange="App.updateGaleriaField(\'descripcion\',this.value)" />') + '</div>' +
+        '<div style="margin-top:10px;">' + field("📷 Foto", '<input type="file" accept="image/*" onchange="App.uploadGaleriaFoto(this)" />') +
+          (gf.foto ? '<img src="' + gf.foto + '" class="thumb" style="margin-top:6px;" />' : '') + '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:14px;"><button class="btn btn-accent" onclick="App.saveGaleriaItem()">Guardar</button><button class="btn" onclick="App.cancelGaleriaForm()">Cancelar</button></div>' +
+      '</div>';
+    }
+    var gridHtml = d.galeria.length ? '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;">' +
+      d.galeria.map(function(g){
+        return '<div style="text-align:center;">' +
+          '<img src="' + g.foto + '" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="App.viewDoc(\'' + g.foto.replace(/'/g,"") + '\')" />' +
+          '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">' + esc(g.categoria) + '</div>' +
+        '</div>';
+      }).join("") + '</div>' : '<div style="color:var(--text-dim);font-size:14px;">Aún no hay fotos guardadas.</div>';
+
+    return '<div class="stack">' +
+      sectionTitle("Galería de mi moto", "Fotos, documentos, comprobantes y mantenimientos") +
+      (this.ui.galeriaForm ? '' : '<button class="btn btn-accent" style="width:fit-content;" onclick="App.openGaleriaForm()">➕ Añadir foto</button>') +
+      formHtml +
+      gridHtml +
+    '</div>';
+  },
+
+  /* ---------- Cuentas y pago ---------- */
+  renderPagos: function() {
+    var d = this.state;
+    var cuentasHtml = d.cuentas.map(function(c){
+      return '<div class="card" style="padding:16px;">' +
+        '<div style="font-weight:600;margin-bottom:6px;">' + esc(c.banco) + '</div>' +
+        '<div style="font-size:13px;color:var(--text-dim);">' + esc(c.tipo) + '</div>' +
+        '<div class="mono" style="font-size:16px;margin:8px 0;">' + esc(c.numero) + '</div>' +
+        '<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">' + esc(c.titular) + '</div>' +
+        '<button class="btn btn-sm" onclick="App.copyText(\'' + c.numero + '\')">📋 Copiar</button>' +
+      '</div>';
+    }).join("");
+
+    var contactosHtml = d.contactos.map(function(c){
+      return '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">' +
+        '<div><div style="font-weight:600;">' + esc(c.nombre) + ' — ' + esc(c.rol) + '</div><div class="mono" style="color:var(--text-dim);">' + esc(c.telefono) + '</div></div>' +
+        '<div style="display:flex;gap:6px;"><a class="btn btn-sm" href="tel:' + esc(c.telefono) + '">📞 Llamar</a>' +
+        '<button class="btn btn-sm" onclick="App.copyText(\'' + c.telefono + '\')">📋 Copiar</button></div></div>';
+    }).join("");
+
+    return '<div class="stack">' +
+      sectionTitle("Cuentas y pago", "Todo lo necesario para pagar rápido") +
+      '<div class="grid-quick">' + cuentasHtml + '</div>' +
+      '<a href="' + esc(d.linkPago) + '" target="_blank" rel="noreferrer" class="btn btn-accent" style="width:fit-content;">💳 Hacer pago</a>' +
+      infoCard("👩‍💼 Contacto de caja", contactosHtml +
+        '<div style="font-size:12px;color:var(--text-dim);margin-top:10px;">Para cualquier pago o consulta, ten a la mano tu nombre completo, cédula y los datos del titular.</div>') +
+    '</div>';
+  },
+
+  /* ---------- Configuración ---------- */
+  renderConfig: function() {
+    var d = this.state;
+    return '<div class="stack">' +
+      sectionTitle("Configuración") +
+      infoCard("Apariencia", '<button class="btn" onclick="App.toggleTheme()">' + (d.theme === "dark" ? "☀️" : "🌙") + ' Cambiar a modo ' + (d.theme === "dark" ? "claro" : "oscuro") + '</button>') +
+
+      infoCard("🔐 Usuario y contraseña", '<div class="grid2">' +
+        field("Usuario", '<input id="cfg-user" value="' + esc(d.auth.username) + '" />') +
+        field("Nueva contraseña", '<input id="cfg-pass" type="password" placeholder="Dejar vacío para no cambiar" />') +
+        '</div><button class="btn btn-accent" style="margin-top:10px;" onclick="App.updateCredentials()">Guardar credenciales</button>' +
+        '<div id="cfg-msg" style="color:var(--good);font-size:13px;margin-top:8px;"></div>') +
+
+      infoCard("💾 Copia de seguridad", '<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">Guarda o restaura toda la información de la plataforma, incluyendo fotos, en un archivo de texto.</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<button class="btn" onclick="App.downloadBackup()">💾 Hacer copia de seguridad</button>' +
+        '<label class="btn" style="cursor:pointer;">♻️ Restaurar copia<input type="file" accept="application/json" style="display:none;" onchange="App.restoreBackup(this)" /></label>' +
+        '</div>') +
+
+      '<div style="font-size:12px;color:var(--text-dim);line-height:1.6;">' +
+      '<b>Notas técnicas honestas:</b><br/>' +
+      '• Este archivo guarda todo (datos y fotos) en el almacenamiento local (localStorage) de este navegador. Persiste al cerrar la pestaña o reiniciar el equipo, pero <b>solo en este mismo navegador y dispositivo</b>; no se sincroniza solo con tu teléfono. Usa la copia de seguridad para pasar la información de un dispositivo a otro.<br/>' +
+      '• Las fotos ocupan bastante espacio: si el navegador se queda sin cupo al guardar, te avisará; en ese caso descarga una copia y evita subir demasiadas fotos de alta resolución.<br/>' +
+      '• Un archivo HTML abierto localmente no puede instalarse como PWA verdadera (eso requiere un servidor con HTTPS, manifest.json y service worker) ni sincronizar automáticamente varios dispositivos en tiempo real — eso sí necesita el backend (Node/Express + base de datos) que describiste, para el cual este diseño puede servir de referencia visual.' +
+      '</div>' +
+
+      '<button class="btn" style="width:fit-content;" onclick="App.logout()">🚪 Cerrar sesión</button>' +
+    '</div>';
+  }
+};
+
+/* ---------- helpers de layout ---------- */
+function field(label, inputHtml) { return '<div><label class="f-label">' + esc(label) + '</label>' + inputHtml + '</div>'; }
+function sectionTitle(title, subtitle) {
+  return '<div><div class="head" style="font-size:24px;font-weight:700;">' + esc(title) + '</div>' +
+    (subtitle ? '<div style="font-size:13px;color:var(--text-dim);">' + esc(subtitle) + '</div>' : '') + '</div>';
+}
+function infoCard(title, innerHtml) {
+  return '<div class="card" style="padding:16px;"><div style="font-weight:600;margin-bottom:10px;">' + title + '</div>' + innerHtml + '</div>';
+}
+
+App.init();
+</script>
+</body>
+</html>
