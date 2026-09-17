@@ -4,6 +4,10 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Victory MRX 150 — Centro de control</title>
+ <link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#E8A33D">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
   * { box-sizing: border-box; }
@@ -133,7 +137,7 @@ function defaultData() {
     mantenimiento: {
       kmActualHistorial: [],
       aceite: { intervaloKm: 5000, especificacion: "20W50, JASO MA / API SL", historial: [] },
-      revisiones: { puntos: [500,5000,10000,15000,20000], intervaloContinuo: 5000, historial: [] },
+      revisiones: { puntos: [500,5000,10000,15000,20000], pagas: [10000], intervaloContinuo: 5000, historial: [] },
       componentes: COMPONENTES_DEFAULT.map(function(nombre){
         return { id: uidStatic(), nombre: nombre, intervaloKm: 0, tipo: "estimado", ultimoKm: 0, ultimaFecha: "" };
       })
@@ -274,6 +278,16 @@ function buildAlerts(d, totals) {
   if (proxAceite - km <= 300) alerts.push({tone:"warn", text:"Cambio de aceite en "+(proxAceite-km)+" km (a los "+proxAceite.toLocaleString("es-CO")+" km)."});
   var proxRev = nextRevisionKm(d);
   if (proxRev - km <= 300) alerts.push({tone:"warn", text:"Mantenimiento/revisión en "+(proxRev-km)+" km (a los "+proxRev.toLocaleString("es-CO")+" km)."});
+    var revPuntos = (d.mantenimiento.revisiones.puntos || []).slice().sort(function(a,b){ return a-b; });
+  var revPagas = d.mantenimiento.revisiones.pagas || [10000];
+  revPuntos.forEach(function(pt, idx){
+    if (revPagas.indexOf(pt) === -1) return;
+    var prev = idx > 0 ? revPuntos[idx-1] : 0;
+    var half = prev + (pt - prev) / 2;
+    if (km >= half && km < pt) {
+      alerts.push({tone:"warn", text:"Vas a la mitad del camino hacia tu revisión de "+pt.toLocaleString("es-CO")+" km — recuerda que esa revisión es PAGADA por ti."});
+    }
+  });
   if (d.soat.vigenciaFin) {
     var dsoat = daysUntil(d.soat.vigenciaFin);
     if (dsoat < 0) alerts.push({tone:"bad", text:"El SOAT está vencido."});
@@ -457,6 +471,11 @@ var App = {
   updateRevisionPuntos: function(value) {
     this.state.mantenimiento.revisiones.puntos = value.split(",").map(function(n){ return Number(n.trim()); }).filter(function(n){ return n; });
     this.save(); this.render();
+     },
+      updateRevisionesPagas: function(value) {
+    this.state.mantenimiento.revisiones.pagas = value.split(",").map(function(n){ return Number(n.trim()); }).filter(function(n){ return n; });
+    this.save(); this.render();
+ 
   },
   updateComponente: function(id, field, value, isNumber) {
     var c = this.state.mantenimiento.componentes.find(function(x){ return x.id === id; });
@@ -972,7 +991,11 @@ var App = {
           field("Puntos fijos (km, separados por coma)", '<input value="' + d.mantenimiento.revisiones.puntos.join(",") + '" onchange="App.updateRevisionPuntos(this.value)" />') +
           field("Intervalo continuo después del último punto", '<input type="number" value="' + d.mantenimiento.revisiones.intervaloContinuo + '" onchange="App.updateMaintConfig(\'revisiones\',\'intervaloContinuo\',this.value,true)" />') +
         '</div>' +
-        '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">' + d.mantenimiento.revisiones.puntos.map(function(p){ return pill(p<=km?"good":"warn", p.toLocaleString("es-CO")+" km"); }).join(" ") + '</div>' +
+                '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">' + d.mantenimiento.revisiones.puntos.map(function(p){
+          var esPaga = (d.mantenimiento.revisiones.pagas || [10000]).indexOf(p) !== -1;
+          return pill(p<=km?"good":"warn", p.toLocaleString("es-CO")+" km" + (esPaga ? " 💰 paga" : ""));
+        }).join(" ") + '</div>' +
+        field("Revisiones pagadas por ti (km, separados por coma)", '<input value="' + (d.mantenimiento.revisiones.pagas || [10000]).join(",") + '" onchange="App.updateRevisionesPagas(this.value)" />') + '</div>' +
         '<div style="font-size:14px;margin-bottom:10px;">🔧 Próxima revisión: <b>' + proxRev.toLocaleString("es-CO") + ' km</b> — faltan ' + (proxRev-km).toLocaleString("es-CO") + ' km</div>' +
         revForm + revHist +
       '</div>' +
@@ -1147,9 +1170,15 @@ var App = {
       infoCard("🪪 Tarjeta de propiedad", '<div style="font-size:12px;color:var(--text-dim);">Los datos se toman de la información legal de la moto de arriba.</div>' +
         docBtns("tarjetaPropiedad.foto", "tarjeta-propiedad.jpg")) +
 
-      infoCard("🏍️ Garantía de fábrica (Auteco)", '<div style="font-size:13px;color:var(--text-dim);margin-bottom:8px;">' +
-        d.garantiaFabrica.meses + ' meses o ' + d.garantiaFabrica.km.toLocaleString("es-CO") + ' km, lo primero que ocurra.</div>' +
-        '<div class="grid2">' + field("Fecha de inicio", '<input type="date" value="' + esc(d.garantiaFabrica.fechaInicio) + '" onchange="App.updateField(\'garantiaFabrica.fechaInicio\', this.value)" />') + '</div>') +
+            infoCard("🏍️ Garantía de fábrica (Auteco)",
+        '<div style="font-size:13px;color:var(--text-dim);margin-bottom:8px;">' +
+          d.garantiaFabrica.meses + ' meses' + (d.garantiaFabrica.km > 0 ? (' o ' + d.garantiaFabrica.km.toLocaleString("es-CO") + ' km, lo primero que ocurra.') : '.') +
+        '</div>' +
+        '<div class="grid2">' +
+          field("Meses de garantía", '<input type="number" value="' + d.garantiaFabrica.meses + '" onchange="App.updateField(\'garantiaFabrica.meses\', this.value, true)" />') +
+          field("Kilómetros límite (0 = no aplica)", '<input type="number" value="' + d.garantiaFabrica.km + '" onchange="App.updateField(\'garantiaFabrica.km\', this.value, true)" />') +
+          field("Fecha de inicio", '<input type="date" value="' + esc(d.garantiaFabrica.fechaInicio) + '" onchange="App.updateField(\'garantiaFabrica.fechaInicio\', this.value)" />') +
+        '</div>') +
 
       infoCard("🛡️ Garantía suplementaria — GARANTÍA SUPLEMENTARIA VIGENTE",
         (dgFin !== null ? ('<div style="margin-bottom:10px;">' + pill(dgFin < 0 ? "bad" : dgFin <= 30 ? "warn" : "good", dgFin < 0 ? "Vencida" : "Faltan " + dgFin + " días") + '</div>') : '') +
